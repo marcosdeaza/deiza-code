@@ -8,12 +8,14 @@ const path = require('path');
 const https = require('https');
 const { exec } = require('child_process');
 const readline = require('readline');
-const { C, BANNER, Status, box, COMMANDS_REGISTRY, renderCommandPalette, renderWhoami } = require('./ui');
+const { C, BANNER, Status, box, COMMANDS_REGISTRY, renderCommandPalette, renderWhoami, renderSessionList } = require('./ui');
 const { loadConfig, saveConfig, DEFAULT_MODEL, DEFAULT_DEIZA_API, VERSION } = require('./config');
 const { runLoginFlow, fetchModels, fetchUsage, validateApiKey } = require('./auth');
 const { runAgentTurn, streamCompletion } = require('./agent');
 const { Tools } = require('./tools');
 const { getGitContext, detectProjectType } = require('./context');
+const { createSession, saveSession, loadSession, listSessions, getLatestSession, updateSessionTitleFromPrompt } = require('./session');
+const { detectImageInText, getClipboardImage } = require('./clipboard');
 
 async function checkLatestVersion() {
   return new Promise((resolve) => {
@@ -92,6 +94,19 @@ async function startRepl(initialConfig) {
   console.log(`  ${C.white}Modelo activo:${C.reset} ${modelLabel}`);
   console.log(`  ${C.white}Workspace:${C.reset} ${C.gray}${process.cwd()}${C.reset} [${projType}]${branchLabel}\n`);
 
+  // Session Persistence for current workspace
+  let activeSession = getLatestSession(process.cwd());
+  const messages = [];
+
+  if (activeSession && Array.isArray(activeSession.messages) && activeSession.messages.length > 0) {
+    messages.push(...activeSession.messages);
+    if (activeSession.mode) currentMode = activeSession.mode;
+    console.log(`  ${C.rose}● Sesión persistente restaurada:${C.reset} ${C.white}${activeSession.title}${C.reset} ${C.darkGray}(${messages.length} mensajes guardados)${C.reset}`);
+    console.log(`  ${C.gray}Usa ${C.white}/new${C.gray} para iniciar limpia o ${C.white}/history${C.gray} para ver sesiones anteriores.${C.reset}\n`);
+  } else {
+    activeSession = createSession(process.cwd(), currentMode);
+  }
+
   console.log(`  ${C.gray}Escribe ${C.rose}/ ${C.gray}para ver comandos en tiempo real, o escribe tu consulta directamente.${C.reset}\n`);
 
   // Non-blocking background version check
@@ -120,7 +135,6 @@ async function startRepl(initialConfig) {
     return [[], line];
   };
 
-  const messages = [];
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
@@ -179,6 +193,88 @@ async function startRepl(initialConfig) {
           usage: currentUsage,
           currentMode,
         }));
+        rl.prompt();
+        return;
+      }
+
+      if (cmd === '/history' || cmd === '/sessions') {
+        const list = listSessions(process.cwd());
+        console.log(renderSessionList(list, activeSession?.id));
+        rl.prompt();
+        return;
+      }
+
+      if (cmd === '/new') {
+        activeSession = createSession(process.cwd(), currentMode);
+        messages.length = 0;
+        console.log(`\n  ${C.green}✓ Nueva conversación iniciada en limpio:${C.reset} ${C.bold}${activeSession.id}${C.reset}\n`);
+        rl.prompt();
+        return;
+      }
+
+      if (cmd === '/resume') {
+        const targetId = parts[1];
+        if (!targetId) {
+          const list = listSessions(process.cwd());
+          console.log(renderSessionList(list, activeSession?.id));
+          rl.prompt();
+          return;
+        }
+        const loaded = loadSession(targetId, process.cwd());
+        if (loaded) {
+          activeSession = loaded;
+          messages.length = 0;
+          if (Array.isArray(loaded.messages)) {
+            messages.push(...loaded.messages);
+          }
+          if (loaded.mode) currentMode = loaded.mode;
+          console.log(`\n  ${C.green}✓ Conversación reanudada:${C.reset} ${C.bold}${loaded.title}${C.reset} ${C.gray}(${messages.length} mensajes cargados)${C.reset}\n`);
+          rl.setPrompt(getPrompt());
+        } else {
+          console.log(`\n  ${C.granateBright}✖ No se encontró la sesión:${C.reset} ${targetId}\n`);
+        }
+        rl.prompt();
+        return;
+      }
+
+      if (cmd === '/paste' || cmd === '/clipboard') {
+        console.log(`\n  ${C.cyan}📋 Leyendo captura del portapapeles del sistema operativo...${C.reset}`);
+        const clip = getClipboardImage();
+        if (!clip.success) {
+          console.log(`  ${C.gold}⚠️  ${clip.error || 'No se encontró imagen en el portapapeles.'}${C.reset}`);
+          console.log(`  ${C.gray}Tip: Toma una captura con Win+Shift+S (Windows), Cmd+Shift+4 (Mac) o PrtScn y vuelve a escribir /paste.${C.reset}\n`);
+          rl.prompt();
+          return;
+        }
+
+        console.log(`  ${C.green}✓ Imagen del portapapeles capturada:${C.reset} ${clip.imagePath}`);
+        const promptAfter = parts.slice(1).join(' ') || 'Analiza esta captura de pantalla y relaciónala con el código del proyecto.';
+
+        rl.pause();
+        try {
+          const imgItem = {
+            path: clip.imagePath,
+            data_url: clip.dataUrl,
+            size_bytes: fs.existsSync(clip.imagePath) ? fs.statSync(clip.imagePath).size : 0,
+          };
+          await runAgentTurn({
+            cfg,
+            messages,
+            userInput: promptAfter,
+            rl,
+            confirmCallback: confirmAction,
+            mode: currentMode,
+            images: [imgItem],
+          });
+          updateSessionTitleFromPrompt(activeSession, promptAfter);
+          activeSession.messages = messages;
+          activeSession.mode = currentMode;
+          saveSession(activeSession);
+        } catch (err) {
+          console.log(Status.error(err.message));
+        }
+        rl.resume();
+        rl.setPrompt(getPrompt());
         rl.prompt();
         return;
       }
@@ -332,6 +428,10 @@ async function startRepl(initialConfig) {
             mode: currentMode,
             images: [imgResult],
           });
+          updateSessionTitleFromPrompt(activeSession, promptAfterImage);
+          activeSession.messages = messages;
+          activeSession.mode = currentMode;
+          saveSession(activeSession);
         } catch (err) {
           console.log(Status.error(err.message));
         }
@@ -415,6 +515,10 @@ async function startRepl(initialConfig) {
 
       if (cmd === '/clear') {
         messages.length = 0;
+        if (activeSession) {
+          activeSession.messages = [];
+          saveSession(activeSession);
+        }
         console.clear();
         console.log(`  ${C.green}✓ Contexto de conversación limpiado.${C.reset}\n`);
         rl.prompt();
@@ -451,17 +555,37 @@ async function startRepl(initialConfig) {
       return;
     }
 
+    // Check if input contains an image file path (from CMD drag-and-drop or pasting "C:\path\img.png")
+    const imgDetection = detectImageInText(input);
+    let runImages = [];
+    let effectiveInput = input;
+
+    if (imgDetection.hasImage) {
+      console.log(`  ${C.cyan}👁 Imagen detectada en el comando:${C.reset} ${imgDetection.imagePath}`);
+      runImages.push({
+        path: imgDetection.imagePath,
+        data_url: imgDetection.dataUrl,
+        size_bytes: fs.existsSync(imgDetection.imagePath) ? fs.statSync(imgDetection.imagePath).size : 0,
+      });
+      effectiveInput = imgDetection.promptText;
+    }
+
     // Process user coding instruction
     rl.pause();
     try {
       await runAgentTurn({
         cfg,
         messages,
-        userInput: input,
+        userInput: effectiveInput,
         rl,
         confirmCallback: confirmAction,
         mode: currentMode,
+        images: runImages,
       });
+      updateSessionTitleFromPrompt(activeSession, effectiveInput);
+      activeSession.messages = messages;
+      activeSession.mode = currentMode;
+      saveSession(activeSession);
     } catch (err) {
       if (err.message === 'AUTH_EXPIRED') {
         console.log(Status.error('Tu sesión ha expirado o la clave es inválida. Ejecuta /login para reconectar.'));

@@ -74,10 +74,14 @@ deiza --endpoint https://deiza.org
 ## ⚡ Características Principales
 
 - **Modos Duales: BUILD y PLAN:**
-  - **Modo BUILD:** Edición quirúrgica activa de código, diffs visuales y ejecución de comandos.
+  - **Modo BUILD:** Edición quirúrgica activa de código, diffs visuales y tests activos.
   - **Modo PLAN:** Exploración arquitectónica segura sin mutar el sistema de archivos, formulando blueprints paso a paso antes de aplicar cambios.
+- **Persistencia de Conversaciones y Sesiones:** Guarda automáticamente el contexto completo por proyecto en `~/.deiza/sessions/`. Permite listar sesiones pasadas (`/history`), reanudarlas en cualquier momento (`/resume [id]`) o iniciar limpias (`/new`).
+- **Soporte de Imágenes y Capturas en Windows CMD y Terminales:**
+  - **Detección Automática de Rutas:** Si arrastras o pegas la ruta de una imagen en el CMD (ej: `"C:\path\screenshot.png"`), Deiza Code la detecta al vuelo, la convierte a base64 y la adjunta al modelo multimodal.
+  - **Pegado Nativo de Capturas (`/paste`):** Si acabas de tomar una captura de pantalla con `Win + Shift + S` (Windows), `Cmd + Shift + 4` (macOS) o `PrtScn` (Linux), simplemente escribe `/paste` y se adjunta de inmediato desde el portapapeles.
 - **Motor Multi-Agente:** Permite a Deiza Code delegar subtareas (investigación de contexto, auditorías de seguridad, ejecución de suites de test) a subagentes autónomos aislados (`invoke_subagent`).
-- **Visión Multimodal:** Soporte nativo para inspeccionar capturas de pantalla, maquetas y assets de diseño mediante comandos `/image` y la herramienta `view_image`.
+- **Visión Multimodal:** Soporte nativo para inspeccionar capturas de pantalla, maquetas y assets de diseño mediante comandos `/image`, `/paste` y la herramienta `view_image`.
 - **Edición Quirúrgica de Código:** Aplica reemplazos exactos mostrando **diffs visuales** en color verde y rojo directamente en la terminal antes y después de modificar archivos.
 - **Herramientas Agénticas Integradas:**
   - `read_file`: Lectura con rangos exactos de líneas.
@@ -134,6 +138,10 @@ npm install -g deiza-code
 | `/plan [query]` | Activa el modo PLAN (inspección arquitectónica y blueprint sin modificar archivos) |
 | `/build [query]` | Activa el modo BUILD (edición quirúrgica, diffs visuales y tests activos) |
 | `/mode [plan\|build]` | Alterna rápidamente entre modo BUILD y PLAN |
+| `/history` | Ver historial de conversaciones y sesiones guardadas en este proyecto |
+| `/resume [id]` | Continuar una conversación guardada restaurando todo su contexto previo |
+| `/new` | Iniciar una nueva conversación limpia en este workspace |
+| `/paste` | Pegar captura del portapapeles del SO (Win+Shift+S, PrtScn o Cmd+Shift+4) |
 | `/agent <rol> <tarea>` | Lanza un subagente worker aislado para auditar o investigar código |
 | `/image <ruta> [inst]` | Inspecciona una imagen, captura o mockup con visión multimodal |
 | `/whoami` | Muestra el perfil de usuario, plan (`Friend` / `Signet`), cuota y estado de la ventana |
@@ -188,6 +196,8 @@ deiza-code/
 ├── src/
 │   ├── index.js          # REPL interactivo y comandos slash
 │   ├── agent.js          # Motor agéntico multi-turno y cliente SSE
+│   ├── session.js        # Persistencia de conversaciones por workspace
+│   ├── clipboard.js      # Extracción nativa de capturas y detección en CMD
 │   ├── tools.js          # Implementación de herramientas y diffs
 │   ├── context.js        # Detector de Git y contexto de proyecto
 │   ├── auth.js           # Servidor loopback OAuth y gestión de API key

@@ -34,11 +34,13 @@ const http = require('http');
 const https = require('https');
 const crypto = require('crypto');
 const readline = require('readline');
-const { exec, spawn } = require('child_process');
+const { exec, spawn, execSync } = require('child_process');
 `;
 
 const uiCode = cleanCode(read('src/ui.js'));
 const configCode = cleanCode(read('src/config.js'));
+const sessionCode = cleanCode(read('src/session.js'));
+const clipboardCode = cleanCode(read('src/clipboard.js'));
 const contextCode = cleanCode(read('src/context.js'));
 const toolsCode = cleanCode(read('src/tools.js'));
 const promptCode = cleanCode(read('src/prompt.js'));
@@ -53,19 +55,23 @@ const fullBundle = [
   uiCode,
   '// ── 2. Configuration ──',
   configCode,
-  '// ── 3. Workspace Context ──',
+  '// ── 3. Session Persistence ──',
+  sessionCode,
+  '// ── 4. Clipboard & Image Detection ──',
+  clipboardCode,
+  '// ── 5. Workspace Context ──',
   contextCode,
-  '// ── 4. Execution Tools ──',
+  '// ── 6. Execution Tools ──',
   toolsCode,
-  '// ── 5. System Prompt ──',
+  '// ── 7. System Prompt ──',
   promptCode,
-  '// ── 6. Agent Engine & LLM Client ──',
+  '// ── 8. Agent Engine & LLM Client ──',
   agentCode,
-  '// ── 7. Authentication & Browser Flow ──',
+  '// ── 9. Authentication & Browser Flow ──',
   authCode,
-  '// ── 8. Interactive REPL & Commands ──',
+  '// ── 10. Interactive REPL & Commands ──',
   indexCode,
-  '// ── 9. Main Entrypoint ──',
+  '// ── 11. Main Entrypoint ──',
   binCode,
 ].join('\n\n');
 

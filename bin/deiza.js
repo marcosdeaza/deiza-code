@@ -5,7 +5,7 @@
  */
 
 const { BANNER, C, Status } = require('../src/ui');
-const { loadConfig, saveConfig } = require('../src/config');
+const { loadConfig, saveConfig, VERSION } = require('../src/config');
 const { runLoginFlow } = require('../src/auth');
 const { startRepl } = require('../src/index');
 const { runAgentTurn } = require('../src/agent');
@@ -14,7 +14,7 @@ async function main() {
   const args = process.argv.slice(2);
 
   if (args.includes('--version') || args.includes('-v')) {
-    console.log('deiza-code v1.1.0');
+    console.log(`deiza-code v${VERSION}`);
     process.exit(0);
   }
 

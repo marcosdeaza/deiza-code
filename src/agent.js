@@ -162,9 +162,10 @@ async function runAgentTurn({ cfg, messages, userInput, rl, confirmCallback, mod
   if (images && images.length > 0) {
     const multimodalContent = [{ type: 'text', text: userInput }];
     for (const img of images) {
+      const url = typeof img === 'string' ? img : (img.data_url || img.dataUrl || img.base64 || img.url);
       multimodalContent.push({
         type: 'image_url',
-        image_url: { url: img.data_url || img },
+        image_url: { url },
       });
     }
     messages.push({ role: 'user', content: multimodalContent });

@@ -31,13 +31,13 @@ const C = {
 };
 
 const BANNER = `
-${C.granateBold}  ██████╗ ███████╗██╗███████╗ █████╗      ██████╗ ██████╗ ██████╗ ███████╗
-  ██╔══██╗██╔════╝██║╚══███╔╝██╔══██╗    ██╔════╝██╔═══██╗██╔══██╗██╔════╝
-  ██║  ██║█████╗  ██║  ███╔╝ ███████║    ██║     ██║   ██║██║  ██║█████╗  
-  ██║  ██║██╔══╝  ██║ ███╔╝  ██╔══██║    ██║     ██║   ██║██║  ██║██╔══╝  
-  ██████╔╝███████╗██║███████╗██║  ██║    ╚██████╗╚██████╔╝██████╔╝███████╗
-  ╚═════╝ ╚══════╝╚═╝╚══════╝╚═╝  ╚═╝     ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝${C.reset}
-  ${C.gray}Autonomous Terminal Coding Agent · v1.0.0${C.reset}
+${C.granateBold}  ██████╗  ███████╗ ██╗ ███████╗  █████╗       ██████╗  ██████╗  ██████╗  ███████╗
+  ██╔══██╗ ██╔════╝ ██║ ╚══███╔╝ ██╔══██╗     ██╔════╝ ██╔═══██╗ ██╔══██╗ ██╔════╝
+  ██║  ██║ ██████╗  ██║   ███╔╝  ███████║     ██║      ██║   ██║ ██║  ██║ ██████╗ 
+  ██║  ██║ ██╔═══╝  ██║  ███╔╝   ██╔══██║     ██║      ██║   ██║ ██║  ██║ ██╔═══╝ 
+  ██████╔╝ ███████╗ ██║ ███████╗ ██║  ██║     ╚██████╗ ╚██████╔╝ ██████╔╝ ███████╗
+  ╚═════╝  ╚══════╝ ╚═╝ ╚══════╝ ╚═╝  ╚═╝      ╚═════╝  ╚═════╝  ╚═════╝  ╚══════╝${C.reset}
+  ${C.gray}Autonomous Terminal Coding Agent · v1.2.0${C.reset}
 `;
 
 const Status = {
@@ -127,7 +127,6 @@ function box(title, content, color = C.granate) {
  * Simple syntax highlighting for streamed code blocks in terminal
  */
 function highlightMarkdown(text) {
-  // Highlights backticks `code` in terminal
   return text
     .replace(/`([^`]+)`/g, `${C.gold}$1${C.reset}`)
     .replace(/\*\*([^*]+)\*\*/g, `${C.bold}$1${C.reset}`);
@@ -137,8 +136,12 @@ const COMMANDS_REGISTRY = [
   { cmd: '/plan', args: '[query]', desc: 'Modo arquitectura: exploración y blueprint sin editar archivos', cat: 'Modos' },
   { cmd: '/build', args: '[query]', desc: 'Modo implementación: edición quirúrgica, diffs y tests activos', cat: 'Modos' },
   { cmd: '/mode', args: '[plan|build]', desc: 'Alternar entre modo BUILD y PLAN', cat: 'Modos' },
-  { cmd: '/agent', args: '<rol> <tarea>', desc: 'Lanzar un subagente worker aislado (ej: Auditor, Tester)', cat: 'Agentes' },
+  { cmd: '/history', args: '', desc: 'Ver historial de conversaciones guardadas en este proyecto', cat: 'Conversaciones' },
+  { cmd: '/resume', args: '[id]', desc: 'Continuar una conversación anterior guardada con todo su contexto', cat: 'Conversaciones' },
+  { cmd: '/new', args: '', desc: 'Iniciar una nueva conversación limpia en este workspace', cat: 'Conversaciones' },
+  { cmd: '/paste', args: '', desc: 'Pegar captura del portapapeles del SO (Win+Shift+S / PrtScn / Cmd+Shift+4)', cat: 'Herramientas' },
   { cmd: '/image', args: '<ruta> [inst]', desc: 'Analizar capturas o maquetas con visión multimodal AWS', cat: 'Herramientas' },
+  { cmd: '/agent', args: '<rol> <tarea>', desc: 'Lanzar un subagente worker aislado (ej: Auditor, Tester)', cat: 'Agentes' },
   { cmd: '/whoami', args: '', desc: 'Ver estado de tu cuenta, plan, tokens y cuota activa', cat: 'Cuenta' },
   { cmd: '/usage', args: '', desc: 'Consultar consumo de tokens y ventana rodante de 5 horas', cat: 'Cuenta' },
   { cmd: '/update', args: '', desc: 'Comprobar y actualizar Deiza Code a la última versión', cat: 'Sistema' },
@@ -206,6 +209,25 @@ function renderWhoami({ email, plan, apiKey, apiBase, usage, currentMode }) {
   return box('Perfil de Usuario — Deiza Code', content, C.granate);
 }
 
+function renderSessionList(sessions, activeSessionId) {
+  if (!sessions || sessions.length === 0) {
+    return `\n  ${C.gray}No hay conversaciones guardadas en este workspace. Usa ${C.white}/new${C.gray} para iniciar.${C.reset}\n`;
+  }
+
+  let content = `  ${C.darkGray}Conversaciones guardadas en este workspace (usa ${C.white}/resume <id>${C.darkGray} para continuar):${C.reset}\n\n`;
+  for (const s of sessions) {
+    const isActive = s.id === activeSessionId;
+    const bullet = isActive ? `${C.green}● [ACTIVA]${C.reset}` : `${C.gray}○${C.reset}`;
+    const modeBadge = s.mode === 'plan' ? `${C.cyan}[PLAN]${C.reset}` : `${C.rose}[BUILD]${C.reset}`;
+    const dateStr = s.updatedAt ? new Date(s.updatedAt).toLocaleString('es-ES', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+    const title = s.title.length > 36 ? s.title.slice(0, 34) + '..' : s.title;
+
+    content += `  ${bullet} ${C.bold}${C.white}${s.id}${C.reset}  ${modeBadge}  ${C.gray}${dateStr}${C.reset}  ${C.white}${title}${C.reset}  ${C.darkGray}(${s.messageCount} msgs)${C.reset}\n`;
+  }
+
+  return box('Historial de Sesiones — Workspace Local', content, C.granate);
+}
+
 module.exports = {
   C,
   BANNER,
@@ -216,4 +238,6 @@ module.exports = {
   COMMANDS_REGISTRY,
   renderCommandPalette,
   renderWhoami,
+  renderSessionList,
 };
+
