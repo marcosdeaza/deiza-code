@@ -73,6 +73,11 @@ deiza --endpoint https://deiza.org
 
 ## ⚡ Características Principales
 
+- **Modos Duales: BUILD y PLAN:**
+  - **Modo BUILD:** Edición quirúrgica activa de código, diffs visuales y ejecución de comandos.
+  - **Modo PLAN:** Exploración arquitectónica segura sin mutar el sistema de archivos, formulando blueprints paso a paso antes de aplicar cambios.
+- **Motor Multi-Agente:** Permite a Deiza Code delegar subtareas (investigación de contexto, auditorías de seguridad, ejecución de suites de test) a subagentes autónomos aislados (`invoke_subagent`).
+- **Visión Multimodal:** Soporte nativo para inspeccionar capturas de pantalla, maquetas y assets de diseño mediante comandos `/image` y la herramienta `view_image`.
 - **Edición Quirúrgica de Código:** Aplica reemplazos exactos mostrando **diffs visuales** en color verde y rojo directamente en la terminal antes y después de modificar archivos.
 - **Herramientas Agénticas Integradas:**
   - `read_file`: Lectura con rangos exactos de líneas.
@@ -81,8 +86,10 @@ deiza --endpoint https://deiza.org
   - `list_dir`: Exploración jerárquica de carpetas y tamaños.
   - `search_files`: Búsqueda rápida por texto o regex ignorando carpetas pesadas (`node_modules`, `.git`, etc.).
   - `run_command`: Ejecución de comandos en bash con captura de salida y errores.
+  - `invoke_subagent`: Delegación concurrente de subtareas a subagentes de soporte.
+  - `view_image`: Análisis visual multimodal de maquetas e interfaces.
 - **Guardas de Seguridad:** Pide confirmación interactiva `[s/N]` antes de ejecutar comandos potencialmente destructivos (`rm -rf`, `git reset --hard`, etc.). Puedes usar `--yes` para automatizar pipelines CI/CD.
-- **Detección Automática de Contexto:** Al arrancar en cualquier proyecto, detecta el branch de Git, archivos modificados, estructura de directorios y reglas personalizadas (`.deizarules` o `CLAUDE.md`).
+- **Detección Automática de Contexto:** Al arrancar en cualquier proyecto, detecta el branch de Git, archivos modificados, estructura de directorios y directivas (`.deizarules` o `CLAUDE.md`).
 - **Autenticación en 1 Clic:** Levanta un callback loopback local en `127.0.0.1:54321` y abre el navegador para vincular tu cuenta al instante.
 - **Estética Granate Profesional (`#8C2F39`):** Interfaz sobria, minimalista, con tipografía limpia y sin elementos innecesarios.
 
@@ -124,10 +131,14 @@ Dentro de la sesión interactiva de Deiza Code, dispones de comandos rápidos co
 | Comando | Descripción |
 | :--- | :--- |
 | `/help` | Muestra la lista de comandos disponibles |
-| `/model [id]` | Lista o cambia de modelo en caliente (`deiza-liquid-5`, `gpt-4o`, etc.) |
-| `/usage` | Consulta el porcentaje de uso del plan y la cuenta atrás de reinicio |
+| `/mode [plan\|build]` | Alterna entre modo BUILD (edición activa) y PLAN (arquitectura segura) |
+| `/plan` | Activa el modo PLAN (análisis sin mutar archivos) |
+| `/build` | Activa el modo BUILD (edición y ejecución de código) |
+| `/image <ruta> [p]` | Inspecciona una imagen o mockup con visión multimodal |
+| `/model [id]` | Consulta o cambia el modelo en caliente |
+| `/usage` | Consulta el consumo de tokens y la cuenta atrás de la ventana de 5 horas |
 | `/endpoint [url]` | Conecta a otro endpoint de IA (Deiza, Ollama, OpenAI, vLLM) |
-| `/init` | Crea un archivo `.deizarules` en la raíz de tu proyecto |
+| `/init` | Crea un archivo de directivas `.deizarules` en la raíz de tu proyecto |
 | `/clear` | Limpia el historial de la conversación actual |
 | `/login` | Inicia sesión con tu cuenta de Deiza desde el navegador |
 | `/logout` | Cierra la sesión en el equipo actual |

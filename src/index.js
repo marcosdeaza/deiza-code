@@ -10,10 +10,12 @@ const { C, BANNER, Status, box } = require('./ui');
 const { loadConfig, saveConfig, DEFAULT_MODEL, DEFAULT_DEIZA_API } = require('./config');
 const { runLoginFlow, fetchModels, fetchUsage } = require('./auth');
 const { runAgentTurn } = require('./agent');
+const { Tools } = require('./tools');
 const { getGitContext, detectProjectType } = require('./context');
 
 async function startRepl(initialConfig) {
   let cfg = initialConfig;
+  let currentMode = cfg.mode || 'build';
 
   console.clear();
   console.log(BANNER);
@@ -58,11 +60,18 @@ async function startRepl(initialConfig) {
 
   console.log(`  ${C.gray}Escribe tu consulta o usa ${C.white}/help${C.gray} para ver los comandos disponibles.${C.reset}\n`);
 
+  const getPrompt = () => {
+    const badge = currentMode === 'plan'
+      ? `${C.cyan}[PLAN]${C.reset}`
+      : `${C.rose}[BUILD]${C.reset}`;
+    return `${C.granateBold}deiza-code${C.reset} ${badge} ❯ `;
+  };
+
   const messages = [];
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
-    prompt: `${C.granateBold}deiza-code ❯ ${C.reset}`,
+    prompt: getPrompt(),
   });
 
   // Safe confirmation prompt helper
@@ -91,14 +100,86 @@ async function startRepl(initialConfig) {
 
       if (cmd === '/help') {
         console.log(`\n${C.granateBold}Comandos disponibles en Deiza Code:${C.reset}`);
-        console.log(`  ${C.bold}/model [id]${C.reset}     - Cambiar o listar modelos disponibles`);
-        console.log(`  ${C.bold}/usage${C.reset}          - Consultar uso de plan y ventana de 5 horas`);
-        console.log(`  ${C.bold}/endpoint [url]${C.reset} - Configurar endpoint custom (Ollama, vLLM, OpenAI)`);
-        console.log(`  ${C.bold}/init${C.reset}           - Inicializar archivo de reglas .deizarules en el repo`);
-        console.log(`  ${C.bold}/clear${C.reset}          - Limpiar historial de la sesión actual`);
-        console.log(`  ${C.bold}/login${C.reset}          - Conectar o cambiar cuenta de Deiza`);
-        console.log(`  ${C.bold}/logout${C.reset}         - Cerrar sesión en esta máquina`);
-        console.log(`  ${C.bold}/exit${C.reset}           - Salir de Deiza Code\n`);
+        console.log(`  ${C.bold}/mode [plan|build]${C.reset} - Alternar entre modo BUILD (edición activa) y PLAN (arquitectura)`);
+        console.log(`  ${C.bold}/plan${C.reset}              - Activar modo PLAN (exploración segura sin modificar archivos)`);
+        console.log(`  ${C.bold}/build${C.reset}             - Activar modo BUILD (edición quirúrgica y tests en el repo)`);
+        console.log(`  ${C.bold}/image <ruta> [p]${C.reset}  - Analizar imagen/mockup con visión multimodal (Amazon Bedrock Mantle)`);
+        console.log(`  ${C.bold}/model [id]${C.reset}        - Consultar o cambiar de modelo en caliente`);
+        console.log(`  ${C.bold}/usage${C.reset}             - Consultar uso de tokens del plan y ventana de 5 horas`);
+        console.log(`  ${C.bold}/endpoint [url]${C.reset}    - Configurar endpoint custom (Ollama, vLLM, OpenAI)`);
+        console.log(`  ${C.bold}/init${C.reset}              - Inicializar archivo de directivas .deizarules`);
+        console.log(`  ${C.bold}/clear${C.reset}             - Limpiar contexto de la conversación actual`);
+        console.log(`  ${C.bold}/login${C.reset}             - Iniciar sesión con tu cuenta de Deiza`);
+        console.log(`  ${C.bold}/logout${C.reset}            - Cerrar sesión en esta máquina`);
+        console.log(`  ${C.bold}/exit${C.reset}              - Salir de Deiza Code\n`);
+        rl.prompt();
+        return;
+      }
+
+      if (cmd === '/mode') {
+        const target = (parts[1] || '').toLowerCase();
+        if (target === 'plan') {
+          currentMode = 'plan';
+        } else if (target === 'build') {
+          currentMode = 'build';
+        } else {
+          currentMode = currentMode === 'build' ? 'plan' : 'build';
+        }
+        const badge = currentMode === 'plan' ? `${C.cyan}[PLAN]${C.reset}` : `${C.rose}[BUILD]${C.reset}`;
+        console.log(`  ${C.green}✓ Modo cambiado a ${badge}${C.reset}: ${currentMode === 'plan' ? 'Solo lectura, análisis y arquitectura.' : 'Implementación completa con edición de código.'}\n`);
+        rl.setPrompt(getPrompt());
+        rl.prompt();
+        return;
+      }
+
+      if (cmd === '/plan') {
+        currentMode = 'plan';
+        console.log(`  ${C.cyan}● Modo PLAN activado:${C.reset} Análisis, inspección y arquitectura sin modificar archivos.\n`);
+        rl.setPrompt(getPrompt());
+        rl.prompt();
+        return;
+      }
+
+      if (cmd === '/build') {
+        currentMode = 'build';
+        console.log(`  ${C.rose}● Modo BUILD activado:${C.reset} Edición quirúrgica de código, tests y ejecución de comandos.\n`);
+        rl.setPrompt(getPrompt());
+        rl.prompt();
+        return;
+      }
+
+      if (cmd === '/image') {
+        const imagePath = parts[1];
+        if (!imagePath) {
+          console.log(`\n  ${C.gray}Uso: /image <ruta_a_imagen> [instrucción opcional]${C.reset}\n`);
+          rl.prompt();
+          return;
+        }
+        const imgResult = await Tools.view_image({ path: imagePath });
+        if (imgResult.error) {
+          console.log(Status.error(imgResult.error));
+          rl.prompt();
+          return;
+        }
+        const promptAfterImage = parts.slice(2).join(' ') || 'Analiza esta imagen y describe las acciones arquitectónicas o de interfaz necesarias en el código.';
+        console.log(`  ${C.cyan}👁 Imagen cargada:${C.reset} ${imagePath} (${Math.round(imgResult.size_bytes / 1024)} KB)`);
+
+        rl.pause();
+        try {
+          await runAgentTurn({
+            cfg,
+            messages,
+            userInput: promptAfterImage,
+            rl,
+            confirmCallback: confirmAction,
+            mode: currentMode,
+            images: [imgResult],
+          });
+        } catch (err) {
+          console.log(Status.error(err.message));
+        }
+        rl.resume();
+        rl.setPrompt(getPrompt());
         rl.prompt();
         return;
       }
@@ -221,6 +302,7 @@ async function startRepl(initialConfig) {
         userInput: input,
         rl,
         confirmCallback: confirmAction,
+        mode: currentMode,
       });
     } catch (err) {
       if (err.message === 'AUTH_EXPIRED') {

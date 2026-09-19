@@ -69,6 +69,10 @@ Recicla Deiza Code con cualquier proyecto de IA:
     }
   }
 
+  if (args.includes('--plan')) {
+    cfg.mode = 'plan';
+  }
+
   // Non-interactive prompt mode (-p / --prompt or direct text argument)
   const promptIdx = args.indexOf('-p') !== -1 ? args.indexOf('-p') : args.indexOf('--prompt');
   let inlinePrompt = null;
@@ -91,6 +95,7 @@ Recicla Deiza Code con cualquier proyecto de IA:
         messages,
         userInput: inlinePrompt,
         confirmCallback: async () => autoYes,
+        mode: cfg.mode || 'build',
       });
       process.exit(0);
     } catch (err) {

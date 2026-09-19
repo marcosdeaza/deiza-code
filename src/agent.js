@@ -149,18 +149,34 @@ async function streamCompletion({ apiBase, apiKey, model, messages, onChunk }) {
 /**
  * Multi-turn Agentic Execution Loop
  */
-async function runAgentTurn({ cfg, messages, userInput, rl, confirmCallback }) {
-  // If first turn or system prompt missing, initialize system prompt
+async function runAgentTurn({ cfg, messages, userInput, rl, confirmCallback, mode = 'build', images = [] }) {
+  // If first turn or system prompt missing, initialize system prompt with current mode
   if (messages.length === 0 || messages[0].role !== 'system') {
-    messages.unshift({ role: 'system', content: buildSystemPrompt() });
+    messages.unshift({ role: 'system', content: buildSystemPrompt(mode) });
+  } else {
+    // Keep mode updated in system prompt
+    messages[0].content = buildSystemPrompt(mode);
   }
 
-  messages.push({ role: 'user', content: userInput });
+  // Multimodal image support
+  if (images && images.length > 0) {
+    const multimodalContent = [{ type: 'text', text: userInput }];
+    for (const img of images) {
+      multimodalContent.push({
+        type: 'image_url',
+        image_url: { url: img.data_url || img },
+      });
+    }
+    messages.push({ role: 'user', content: multimodalContent });
+  } else {
+    messages.push({ role: 'user', content: userInput });
+  }
 
   console.log(Status.thinking);
   console.log(`\n${C.granateDark}─────────────────────────────────────────────────────────────${C.reset}`);
 
   let turn = 0;
+  let totalToolsExecuted = 0;
   const MAX_TURNS = 12;
 
   while (turn < MAX_TURNS) {
@@ -187,8 +203,10 @@ async function runAgentTurn({ cfg, messages, userInput, rl, confirmCallback }) {
 
     const toolCalls = extractToolCalls(assistantText);
     if (toolCalls.length === 0) {
-      // No tool calls: task completed
-      console.log(Status.success);
+      // Only show success checkmark when tools/actions were executed
+      if (totalToolsExecuted > 0) {
+        console.log(Status.success);
+      }
       break;
     }
 
@@ -199,6 +217,16 @@ async function runAgentTurn({ cfg, messages, userInput, rl, confirmCallback }) {
         messages.push({
           role: 'user',
           content: `<tool_response name="${call.name}">Error: Unknown tool "${call.name}"</tool_response>`,
+        });
+        continue;
+      }
+
+      // Safety enforcement in PLAN mode: forbid file mutations
+      if (mode === 'plan' && (call.name === 'write_file' || call.name === 'edit_file')) {
+        console.log(`  ${C.rose}⚠️  [PLAN MODE] Modificación bloqueada para ${call.args.path}.${C.reset}`);
+        messages.push({
+          role: 'user',
+          content: `<tool_response name="${call.name}">[MODO PLAN ACTIVO] La herramienta "${call.name}" está deshabilitada en modo PLAN. Formula tu plan de arquitectura o solicita cambiar a modo BUILD (/build) para escribir cambios.</tool_response>`,
         });
         continue;
       }
@@ -227,11 +255,16 @@ async function runAgentTurn({ cfg, messages, userInput, rl, confirmCallback }) {
         console.log(Status.listing(call.args.path || '.'));
       } else if (call.name === 'search_files') {
         console.log(Status.searching(call.args.query));
+      } else if (call.name === 'invoke_subagent') {
+        console.log(Status.subagent(call.args.role || 'Worker', call.args.task));
+      } else if (call.name === 'view_image') {
+        console.log(Status.vision(call.args.path));
       } else {
         console.log(`  ${C.granateBold}● [${call.name}]${C.reset} ${C.gray}${JSON.stringify(call.args)}${C.reset}`);
       }
 
-      const result = await fn(call.args);
+      totalToolsExecuted++;
+      const result = await fn(call.args, { cfg, mode, messages, streamCompletion });
       messages.push({
         role: 'user',
         content: `<tool_response name="${call.name}">\n${JSON.stringify(result, null, 2)}\n</tool_response>`,

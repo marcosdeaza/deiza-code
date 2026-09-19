@@ -48,6 +48,8 @@ const Status = {
   reading: (file) => `  ${C.cyan}📖 [read]${C.reset} ${C.white}${file}${C.reset}`,
   listing: (dir) => `  ${C.gray}📁 [list]${C.reset} ${C.white}${dir}${C.reset}`,
   searching: (query) => `  ${C.gray}🔍 [search]${C.reset} ${C.white}${query}${C.reset}`,
+  subagent: (role, task) => `  ${C.rose}🤖 [agent:${role}]${C.reset} ${C.white}${task}${C.reset}`,
+  vision: (file) => `  ${C.cyan}👁 [vision]${C.reset} ${C.white}${file}${C.reset}`,
   success: `  ${C.green}✓${C.reset} ${C.white}Completado con éxito${C.reset}`,
   error: (msg) => `  ${C.granateBright}✖ Error:${C.reset} ${msg}`,
 };

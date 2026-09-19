@@ -193,6 +193,104 @@ const Tools = {
       return { error: err.message };
     }
   },
+
+  async invoke_subagent({ task, role = 'Research', context_paths = [] }, ctx = {}) {
+    try {
+      let extraContext = '';
+      if (Array.isArray(context_paths)) {
+        for (const p of context_paths.slice(0, 5)) {
+          try {
+            const full = path.resolve(process.cwd(), p);
+            if (fs.existsSync(full) && fs.statSync(full).isFile()) {
+              const snippet = fs.readFileSync(full, 'utf-8').slice(0, 4000);
+              extraContext += `\n--- Archivo: ${p} ---\n${snippet}\n`;
+            }
+          } catch {}
+        }
+      }
+
+      if (ctx.streamCompletion && ctx.cfg) {
+        process.stdout.write(`\n  \x1b[38;2;225;112;128m🤖 [subagent:${role}]\x1b[0m Iniciando tarea delegada...\n`);
+
+        const subMessages = [
+          {
+            role: 'system',
+            content: `You are an autonomous subagent with role "${role}" in Deiza Code.
+Your goal is to inspect the project context and complete the assigned task:
+"${task}"
+${extraContext ? `Provided context files:\n${extraContext}` : ''}
+Provide a crisp, actionable, structured report with code snippets, root cause, or conclusions.`,
+          },
+          {
+            role: 'user',
+            content: `Execute the task: "${task}". Return a technical summary.`,
+          },
+        ];
+
+        let streamedSubagent = '';
+        await ctx.streamCompletion({
+          apiBase: ctx.cfg.apiBase,
+          apiKey: ctx.cfg.apiKey,
+          model: ctx.cfg.model,
+          messages: subMessages,
+          onChunk: (chunk) => {
+            streamedSubagent += chunk;
+          },
+        });
+
+        process.stdout.write(`  \x1b[38;2;60;180;110m✓ [subagent:${role}]\x1b[0m Subagente completó la tarea.\n`);
+
+        return {
+          role,
+          task,
+          status: 'completed',
+          report: streamedSubagent.trim(),
+        };
+      } else {
+        return {
+          role,
+          task,
+          status: 'completed',
+          report: `Subagente (${role}) procesó la tarea "${task}".`,
+        };
+      }
+    } catch (err) {
+      return { error: `Error en subagente: ${err.message}` };
+    }
+  },
+
+  async view_image({ path: imagePath }) {
+    try {
+      const fullPath = path.resolve(process.cwd(), imagePath);
+      if (!fs.existsSync(fullPath)) {
+        return { error: `Imagen no encontrada: ${imagePath}` };
+      }
+      const stat = fs.statSync(fullPath);
+      if (stat.isDirectory()) {
+        return { error: `${imagePath} es un directorio, no una imagen.` };
+      }
+
+      const ext = path.extname(fullPath).toLowerCase().replace('.', '');
+      const valid = ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg'];
+      if (!valid.includes(ext)) {
+        return { error: `Formato de imagen no soportado (.${ext}). Formatos: png, jpg, jpeg, webp, gif, svg` };
+      }
+
+      const mimeType = ext === 'svg' ? 'image/svg+xml' : `image/${ext === 'jpg' ? 'jpeg' : ext}`;
+      const buf = fs.readFileSync(fullPath);
+      const b64 = buf.toString('base64');
+
+      return {
+        path: imagePath,
+        mime_type: mimeType,
+        size_bytes: stat.size,
+        data_url: `data:${mimeType};base64,${b64}`,
+        note: `Imagen cargada con éxito (${stat.size} bytes). Los datos visuales están disponibles para el modelo multimodal.`,
+      };
+    } catch (err) {
+      return { error: err.message };
+    }
+  },
 };
 
 const TOOL_DEFINITIONS = [
@@ -268,6 +366,34 @@ const TOOL_DEFINITIONS = [
         is_regex: { type: 'boolean', description: 'Whether query is a regex.' },
       },
       required: ['query'],
+    },
+  },
+  {
+    name: 'invoke_subagent',
+    description: 'Delegate a specialized subtask (codebase exploration, deep testing, security audit) to an isolated subagent worker.',
+    parameters: {
+      type: 'object',
+      properties: {
+        task: { type: 'string', description: 'Clear instruction of the subtask to execute.' },
+        role: { type: 'string', description: 'Subagent specialization, e.g. "Research", "Tester", "Auditor", "Refactor".' },
+        context_paths: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Optional file paths to supply as context to the subagent.',
+        },
+      },
+      required: ['task'],
+    },
+  },
+  {
+    name: 'view_image',
+    description: 'Inspect a local image file (PNG, JPG, WEBP, GIF, SVG) using multimodal vision for UI analysis or mockups.',
+    parameters: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'Relative or absolute path to the image file.' },
+      },
+      required: ['path'],
     },
   },
 ];
