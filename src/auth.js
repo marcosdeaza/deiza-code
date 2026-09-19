@@ -20,12 +20,13 @@ function openBrowser(url) {
  * Validate an API key against Deiza backend
  */
 async function validateApiKey(apiKey, apiBase = 'https://deiza.org') {
-  if (!apiKey) return { valid: false, error: 'API Key requerida.' };
+  const cleanKey = (apiKey || '').trim().replace(/^["']|["']$/g, '').replace(/[\r\n\t\s]/g, '');
+  if (!cleanKey) return { valid: false, error: 'API Key requerida.' };
   if (!apiBase.includes('deiza.org')) {
-    return { valid: true, plan: 'custom', email: 'Endpoint Personalizado' };
+    return { valid: true, plan: 'custom', email: 'Endpoint Personalizado', apiKey: cleanKey };
   }
 
-  const usage = await fetchUsage(apiKey, apiBase);
+  const usage = await fetchUsage(cleanKey, apiBase);
   if (!usage) {
     return { valid: false, error: 'API Key inválida o no autorizada en deiza.org.' };
   }
@@ -42,6 +43,7 @@ async function validateApiKey(apiKey, apiBase = 'https://deiza.org') {
     valid: true,
     plan: usage.plan,
     email: usage.email || 'Usuario Deiza',
+    apiKey: cleanKey,
     usage,
   };
 }
@@ -51,31 +53,41 @@ async function validateApiKey(apiKey, apiBase = 'https://deiza.org') {
  */
 async function runBrowserOAuthFlow(currentConfig = {}) {
   const state = crypto.randomBytes(16).toString('hex');
-  const port = 54321;
-
-  console.log(`\n${C.granateBold}Conectando con Deiza mediante Navegador...${C.reset}`);
-  console.log(`  ${C.gray}Abriendo navegador para autorizar tu terminal...${C.reset}`);
 
   return new Promise((resolve, reject) => {
-    let server;
-    const authUrl = `${currentConfig.apiBase || 'https://deiza.org'}/cli/auth?port=${port}&state=${state}`;
+    let server = null;
+    let rlPrompt = null;
+    let isFinished = false;
 
     const cleanup = () => {
+      isFinished = true;
       if (server) {
-        server.close();
+        try { server.close(); } catch {}
         server = null;
       }
+      if (rlPrompt) {
+        try { rlPrompt.close(); } catch {}
+        rlPrompt = null;
+      }
+    };
+
+    const finishSuccess = (cfgResult) => {
+      if (isFinished) return;
+      cleanup();
+      resolve(cfgResult);
     };
 
     server = http.createServer((req, res) => {
       try {
-        const reqUrl = new URL(req.url, `http://127.0.0.1:${port}`);
+        const assignedPort = server?.address()?.port || 54321;
+        const reqUrl = new URL(req.url, `http://127.0.0.1:${assignedPort}`);
         if (reqUrl.pathname === '/callback') {
-          const key = reqUrl.searchParams.get('key');
-          const email = reqUrl.searchParams.get('email');
+          const rawKey = reqUrl.searchParams.get('key') || '';
+          const cleanKey = rawKey.trim().replace(/^["']|["']$/g, '').replace(/[\r\n\t\s]/g, '');
+          const email = reqUrl.searchParams.get('email') || '';
           const plan = reqUrl.searchParams.get('plan') || 'pro';
 
-          if (!key) {
+          if (!cleanKey) {
             res.writeHead(400, { 'Content-Type': 'text/html' });
             res.end('<h1>Error: Clave no recibida</h1>');
             return;
@@ -93,18 +105,16 @@ async function runBrowserOAuthFlow(currentConfig = {}) {
             </html>
           `);
 
-          cleanup();
-
           const newConfig = {
             ...currentConfig,
-            apiKey: key,
+            apiKey: cleanKey,
             email: email || '',
             plan,
           };
           saveConfig(newConfig);
 
-          console.log(`  ${C.green}✓ ¡Autenticación exitosa! Cuenta:${C.reset} ${C.bold}${email || 'Conectada'}${C.reset}\n`);
-          resolve(newConfig);
+          console.log(`\n  ${C.green}✓ ¡Autenticación exitosa! Cuenta:${C.reset} ${C.bold}${email || 'Conectada'}${C.reset} · Plan: ${C.granateBold}[${plan.toUpperCase()}]${C.reset}\n`);
+          finishSuccess(newConfig);
         } else {
           res.writeHead(404);
           res.end();
@@ -115,23 +125,67 @@ async function runBrowserOAuthFlow(currentConfig = {}) {
       }
     });
 
+    const startWithPort = (portToTry) => {
+      server.listen(portToTry, '127.0.0.1', () => {
+        const actualPort = server.address().port;
+        const authUrl = `${currentConfig.apiBase || 'https://deiza.org'}/cli/auth?port=${actualPort}&state=${state}`;
+
+        console.log(`\n${C.granateBold}Conectando con Deiza...${C.reset}`);
+        console.log(`  ${C.white}Abriendo tu navegador para iniciar sesión...${C.reset}`);
+        openBrowser(authUrl);
+
+        console.log(`  ${C.gray}Enlace:${C.reset} ${C.granate}${authUrl}${C.reset}`);
+        console.log(`  ${C.gray}(Si el navegador no conecta automáticamente, pega aquí tu clave generada)${C.reset}\n`);
+
+        rlPrompt = readline.createInterface({ input: process.stdin, output: process.stdout });
+        rlPrompt.question(`  ${C.rose}Pega tu API Key de Deiza (o presiona Enter si autorizaste en web): ${C.reset}`, async (ans) => {
+          if (isFinished) return;
+          const cleaned = (ans || '').trim().replace(/^["']|["']$/g, '').replace(/[\r\n\t\s]/g, '');
+          if (cleaned) {
+            console.log(`  ${C.gray}Verificando API Key con Deiza...${C.reset}`);
+            const check = await validateApiKey(cleaned, currentConfig.apiBase);
+            if (check.valid) {
+              const newConfig = {
+                ...currentConfig,
+                apiKey: cleaned,
+                email: check.email || 'Usuario Deiza',
+                plan: check.plan || 'pro',
+              };
+              saveConfig(newConfig);
+              console.log(`  ${C.green}✓ ¡Autenticación exitosa! Cuenta:${C.reset} ${C.bold}${check.email}${C.reset} · Plan: ${C.granateBold}[${check.plan.toUpperCase()}]${C.reset}\n`);
+              finishSuccess(newConfig);
+            } else {
+              console.log(`  ${C.granateBright}✖ ${check.error || 'Clave no válida'}${C.reset}\n`);
+            }
+          }
+        });
+      });
+    };
+
     server.on('error', (err) => {
-      cleanup();
-      console.log(`  ${C.gold}ℹ Servidor local no disponible. Modo manual:${C.reset}`);
-      fallbackManualLogin(authUrl, currentConfig).then(resolve).catch(reject);
+      if (err.code === 'EADDRINUSE' || err.code === 'EACCES') {
+        try {
+          server.removeAllListeners('error');
+          server.on('error', () => {
+            const fallbackUrl = `${currentConfig.apiBase || 'https://deiza.org'}/cli/auth`;
+            fallbackManualLogin(fallbackUrl, currentConfig).then(finishSuccess).catch(reject);
+          });
+          startWithPort(0);
+          return;
+        } catch {}
+      }
+      const fallbackUrl = `${currentConfig.apiBase || 'https://deiza.org'}/cli/auth`;
+      fallbackManualLogin(fallbackUrl, currentConfig).then(finishSuccess).catch(reject);
     });
 
-    server.listen(port, '127.0.0.1', () => {
-      openBrowser(authUrl);
+    startWithPort(54321);
 
-      setTimeout(() => {
-        if (server) {
-          cleanup();
-          console.log(`\n  ${C.gray}Tiempo de espera agotado. Puedes pegar tu clave manualmente:${C.reset}`);
-          fallbackManualLogin(authUrl, currentConfig).then(resolve).catch(reject);
-        }
-      }, 180000);
-    });
+    setTimeout(() => {
+      if (!isFinished) {
+        cleanup();
+        reject(new Error('Tiempo de espera agotado para la autorización.'));
+      }
+    }, 300000);
   });
 }
 
@@ -146,7 +200,7 @@ async function fallbackManualLogin(authUrl, currentConfig) {
   return new Promise((resolve, reject) => {
     rl.question(`  ${C.granateBold}Pega tu API Key de Deiza: ${C.reset}`, async (key) => {
       rl.close();
-      const trimmed = key.trim();
+      const trimmed = (key || '').trim().replace(/^["']|["']$/g, '').replace(/[\r\n\t\s]/g, '');
       if (!trimmed) {
         return reject(new Error('API Key requerida'));
       }

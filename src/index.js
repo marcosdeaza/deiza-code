@@ -175,12 +175,22 @@ async function startRepl(initialConfig) {
   });
 
   // Real-time keystroke listener: typing '/' on an empty line immediately renders command palette
+  // Debounced to prevent corrupting paste streams in Windows CMD / PowerShell
+  let keypressSlashTimer = null;
   readline.emitKeypressEvents(process.stdin);
   if (process.stdin.isTTY) {
     process.stdin.on('keypress', (str, key) => {
       if (str === '/' && rl.line === '') {
-        process.stdout.write('\n' + renderCommandPalette() + '\n');
-        rl.prompt(true);
+        if (keypressSlashTimer) clearTimeout(keypressSlashTimer);
+        keypressSlashTimer = setTimeout(() => {
+          if (rl.line === '/' || rl.line === '') {
+            process.stdout.write('\n' + renderCommandPalette() + '\n');
+            rl.prompt(true);
+          }
+        }, 120);
+      } else if (keypressSlashTimer) {
+        clearTimeout(keypressSlashTimer);
+        keypressSlashTimer = null;
       }
     });
   }
@@ -198,7 +208,7 @@ async function startRepl(initialConfig) {
   rl.prompt();
 
   rl.on('line', async (line) => {
-    const input = line.trim();
+    const input = (line || '').replace(/\r/g, '').trim();
     if (!input) {
       rl.prompt();
       return;
