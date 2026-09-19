@@ -242,6 +242,7 @@ const COMMANDS_REGISTRY = [
   { cmd: '/plan', args: '', desc: 'Modo PLAN: análisis y plan de implementación sin tocar archivos', cat: 'Modos' },
   { cmd: '/mode', args: '[build|copilot|plan]', desc: 'Ver o cambiar el modo de permisos activo', cat: 'Modos' },
   { cmd: '/session', args: '[list|new|resume|delete|info]', desc: 'Gestor de sesiones: listar, crear, reanudar, borrar y métricas', cat: 'Sesión' },
+  { cmd: '/compact', args: '', desc: 'Compactar y comprimir memoria de contexto (estilo Claude Code)', cat: 'Sesión' },
   { cmd: '/tokens', args: '', desc: 'Métricas de la ventana de contexto y tokens de la sesión', cat: 'Sesión' },
   { cmd: '/context', args: '', desc: 'Alias de /tokens', cat: 'Sesión' },
   { cmd: '/history', args: '', desc: 'Ver historial de conversaciones y consumo de tokens', cat: 'Conversaciones' },
@@ -369,6 +370,18 @@ function renderSessionInfo(session) {
   content += `${C.white}Total Tokens Sesión:${C.reset}            ${C.bold}${C.green}${tokens.total.toLocaleString()}${C.reset} tokens consumidos\n`;
 
   return box(`Métricas de Sesión — ${session.id}`, content, C.granate);
+}
+
+/**
+ * Renders the context compaction results box (Claude Code style)
+ */
+function renderCompactionCard(beforeTokens, afterTokens, freedPct) {
+  let content = '';
+  content += `${C.white}Contexto Previo:      ${C.gold}${beforeTokens.toLocaleString()}${C.reset} tokens (${((beforeTokens / 1000000) * 100).toFixed(1)}% del 1M)\n`;
+  content += `${C.white}Contexto Compactado:  ${C.green}${C.bold}${afterTokens.toLocaleString()}${C.reset} tokens (${((afterTokens / 1000000) * 100).toFixed(2)}% del 1M)\n`;
+  content += `${C.white}Espacio Recuperado:   ${C.cyan}${C.bold}${freedPct}% de reducción${C.reset} (espacio libre)\n\n`;
+  content += `${C.gray}✓ La memoria del proyecto (archivos editados, comandos y decisiones) se preservó intacta.${C.reset}`;
+  return box('Compactación de Contexto (Estilo Claude Code)', content, C.granate);
 }
 
 /**
@@ -513,6 +526,7 @@ module.exports = {
   renderWhoami,
   renderSessionList,
   renderSessionInfo,
+  renderCompactionCard,
   selectSessionInteractive,
 };
 

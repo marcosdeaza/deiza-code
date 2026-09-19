@@ -5,12 +5,12 @@
  */
 
 const readline = require('readline');
-const { C, Status, renderSessionList, renderSessionInfo, box } = require('../src/ui');
+const { C, Status, renderSessionList, renderSessionInfo, renderCompactionCard, box } = require('../src/ui');
 const { loadConfig, saveConfig, VERSION, DEFAULT_MODEL, MODES, IS_CLOSED, normalizeUrl, isDeizaHost } = require('../src/config');
 const { ensureAuthenticated, askLine } = require('../src/auth');
 const { startRepl } = require('../src/index');
-const { runAgentTurn } = require('../src/agent');
-const { listSessions, createSession, loadSession, deleteSession, getLatestSession, getActiveContextTokens } = require('../src/session');
+const { runAgentTurn, compactContext } = require('../src/agent');
+const { listSessions, createSession, loadSession, deleteSession, getLatestSession, getActiveContextTokens, saveSession } = require('../src/session');
 
 function printHelp() {
   console.log(`
@@ -37,6 +37,7 @@ Opciones:
 Subcomandos:
   deiza session list|new|delete|info
   deiza tokens
+  deiza compact
 
 Deiza Code siempre necesita una cuenta de Deiza con plan de pago (Friend o Signet).${IS_CLOSED ? `
 Motor: Deiza Omniscient (Deiza Liquid 5.1), con la cuota de uso de tu plan.` : ''}
@@ -112,6 +113,23 @@ async function main() {
 
   if (args[0] === 'tokens' || args[0] === 'context') {
     printTokens(getLatestSession(process.cwd()));
+    process.exit(0);
+  }
+  if (args[0] === 'compact' || args[0] === 'compress') {
+    const ses = getLatestSession(process.cwd());
+    if (!ses || !Array.isArray(ses.messages) || ses.messages.length < 4) {
+      console.log(`\n  ${C.gray}No hay suficiente historial en este workspace para compactar (se requieren al menos 4 mensajes).${C.reset}\n`);
+      process.exit(0);
+    }
+    const comp = compactContext(ses.messages, { force: true });
+    if (comp.compacted) {
+      ses.contextTokens = comp.afterTokens;
+      saveSession(ses);
+      console.log(renderCompactionCard(comp.beforeTokens, comp.afterTokens, comp.freedPct));
+      console.log(`\n  ${C.green}✓ Sesión activa compactada con éxito.${C.reset}\n`);
+    } else {
+      console.log(`\n  ${C.gold}ℹ No fue necesario compactar.${C.reset}\n`);
+    }
     process.exit(0);
   }
   if (args[0] === 'session' || args[0] === 'sessions') {

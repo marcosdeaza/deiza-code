@@ -62,6 +62,28 @@ function detectImageInText(text) {
     return { hasImage: false, imagePath: null, promptText: text || '', dataUrl: null };
   }
 
+  // 0. Check for explicit [image: path/to/file.png] tag
+  const tagWithFileRegex = /\[(?:image|imagen):\s*([^\]]+)\]/i;
+  const tagWithFileMatch = text.match(tagWithFileRegex);
+  if (tagWithFileMatch) {
+    let candidate = tagWithFileMatch[1].trim();
+    if (!path.isAbsolute(candidate)) {
+      const inCache = path.join(CACHE_DIR, candidate);
+      if (fs.existsSync(inCache)) candidate = inCache;
+      else candidate = path.resolve(process.cwd(), candidate);
+    }
+    if (fs.existsSync(candidate)) {
+      const promptText = text.replace(tagWithFileMatch[0], '').trim();
+      const dataUrl = imageFileToBase64(candidate);
+      return {
+        hasImage: true,
+        imagePath: path.resolve(candidate),
+        promptText: promptText || 'Analiza esta imagen y relaciónala con el código del proyecto.',
+        dataUrl,
+      };
+    }
+  }
+
   // 1. Check for quoted paths: "C:\path\to\img.png" or '/path/to/img.png'
   const quotedRegex = /["']([^"']+\.(?:png|jpe?g|webp|gif|bmp|svg))["']/i;
   const quotedMatch = text.match(quotedRegex);
@@ -97,6 +119,22 @@ function detectImageInText(text) {
           dataUrl,
         };
       }
+    }
+  }
+
+  // 3. Check for [image], [imagen], or words referencing image/captura from clipboard
+  const clipboardTagRegex = /\[(image|imagen|screenshot|captura)\]|\b(image|imagen|screenshot|captura)\b/i;
+  if (clipboardTagRegex.test(text)) {
+    const clip = getClipboardImage();
+    if (clip.success && clip.imagePath) {
+      const promptText = text.replace(/\[(?:image|imagen|screenshot|captura)\]/gi, '').trim();
+      return {
+        hasImage: true,
+        imagePath: clip.imagePath,
+        promptText: promptText || 'Analiza esta imagen capturada del portapapeles y relaciónala con el código del proyecto.',
+        dataUrl: clip.dataUrl,
+        fromClipboard: true,
+      };
     }
   }
 

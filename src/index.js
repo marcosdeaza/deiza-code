@@ -8,10 +8,10 @@ const path = require('path');
 const https = require('https');
 const { exec, spawn } = require('child_process');
 const readline = require('readline');
-const { C, BANNER, Status, box, COMMANDS_REGISTRY, MODE_INFO, modeBadge, renderModes, renderCommandPalette, renderWhoami, renderSessionList, renderSessionInfo, selectSessionInteractive } = require('./ui');
+const { C, BANNER, Status, box, COMMANDS_REGISTRY, MODE_INFO, modeBadge, renderModes, renderCommandPalette, renderWhoami, renderSessionList, renderSessionInfo, renderCompactionCard, selectSessionInteractive } = require('./ui');
 const { loadConfig, saveConfig, DEFAULT_MODEL, VERSION, MODES, IS_CLOSED, normalizeMode, normalizeUrl, isDeizaHost } = require('./config');
 const { runLoginFlow, ensureAuthenticated, fetchModels, fetchUsage } = require('./auth');
-const { runAgentTurn, streamCompletion } = require('./agent');
+const { runAgentTurn, streamCompletion, compactContext } = require('./agent');
 const { Tools } = require('./tools');
 const { getGitContext, detectProjectType } = require('./context');
 const { createSession, saveSession, loadSession, listSessions, getLatestSession, updateSessionTitleFromPrompt, deleteSession, addSessionTokens, getActiveContextTokens } = require('./session');
@@ -152,8 +152,13 @@ async function startRepl(initialConfig) {
 
   if (activeSession && Array.isArray(activeSession.messages) && activeSession.messages.length > 0) {
     messages.push(...activeSession.messages);
-    console.log(`  ${C.rose}● Sesión persistente restaurada:${C.reset} ${C.white}${activeSession.title}${C.reset} ${C.darkGray}(${messages.length} mensajes guardados)${C.reset}`);
-    console.log(`  ${C.gray}Usa ${C.white}/new${C.gray} para iniciar limpia o ${C.white}/history${C.gray} para ver sesiones anteriores.${C.reset}\n`);
+    const ctxTokens = getActiveContextTokens(messages);
+    const tokLabel = ctxTokens >= 1000000
+      ? `${(ctxTokens / 1000000).toFixed(2)}M`
+      : ctxTokens >= 1000 ? `${(ctxTokens / 1000).toFixed(1)}k` : `${ctxTokens}`;
+    const pctLabel = ((ctxTokens / 1000000) * 100).toFixed(2);
+    console.log(`  ${C.rose}● Sesión persistente restaurada:${C.reset} ${C.white}${activeSession.title}${C.reset} ${C.gray}(${messages.length} mensajes · ${C.gold}${tokLabel} tokens en contexto activo${C.gray} [${pctLabel}% del 1M])${C.reset}`);
+    console.log(`  ${C.gray}Usa ${C.white}/new${C.gray} para iniciar limpia, ${C.white}/session${C.gray} para cambiar o ${C.white}/compact${C.gray} para comprimir memoria.${C.reset}\n`);
   } else {
     activeSession = createSession(process.cwd(), currentMode);
   }
@@ -227,6 +232,20 @@ async function startRepl(initialConfig) {
         if (key && key.name === 'escape' && abortCtl) abortCtl.abort();
         return;
       }
+
+      // Check for Ctrl+V image paste from clipboard
+      if ((key && key.ctrl && key.name === 'v') || str === '\x16') {
+        const clip = getClipboardImage();
+        if (clip.success && clip.imagePath) {
+          const base = path.basename(clip.imagePath);
+          const tag = `[image: ${base}]`;
+          rl.write(tag + ' ');
+          process.stdout.write(`\n  ${C.cyan}📷 [Imagen pegada del portapapeles: ${base}]${C.reset}\n`);
+          rl.prompt(true);
+          return;
+        }
+      }
+
       if (str === '/' && rl.line === '') {
         if (keypressSlashTimer) clearTimeout(keypressSlashTimer);
         keypressSlashTimer = setTimeout(() => {
@@ -549,6 +568,30 @@ async function startRepl(initialConfig) {
         return;
       }
 
+      if (cmd === '/compact' || cmd === '/compress') {
+        if (messages.length < 4) {
+          console.log(`\n  ${C.gray}La conversación aún es breve (${messages.length} mensajes). No es necesario compactar todavía.${C.reset}\n`);
+          rl.prompt();
+          return;
+        }
+        console.log(`\n  ${C.granateBright}●${C.reset} ${C.white}Compactando memoria de conversación (estilo Claude Code)...${C.reset}`);
+        const comp = compactContext(messages, { force: true });
+        if (comp.compacted) {
+          if (activeSession) {
+            activeSession.messages = messages;
+            activeSession.contextTokens = comp.afterTokens;
+            saveSession(activeSession);
+          }
+          console.log(renderCompactionCard(comp.beforeTokens, comp.afterTokens, comp.freedPct));
+          console.log(`  ${C.green}✓ Memoria compactada con éxito.${C.reset} Espacio libre para seguir programando.\n`);
+        } else {
+          console.log(`  ${C.gold}ℹ No fue necesario compactar.${C.reset}\n`);
+        }
+        rl.setPrompt(getPrompt());
+        rl.prompt();
+        return;
+      }
+
       if (cmd === '/new') {
         const title = parts.slice(1).join(' ').trim() || null;
         activeSession = createSession(process.cwd(), currentMode, title);
@@ -559,7 +602,7 @@ async function startRepl(initialConfig) {
         return;
       }
 
-      if (cmd === '/paste' || cmd === '/clipboard') {
+      if (cmd === '/paste' || cmd === '/clipboard' || cmd === '/img') {
         console.log(`\n  ${C.cyan}Leyendo captura del portapapeles del sistema...${C.reset}`);
         const clip = getClipboardImage();
         if (!clip.success) {
@@ -798,12 +841,12 @@ async function startRepl(initialConfig) {
       return;
     }
 
-    // Image path pasted or dragged into the terminal
+    // Image path or tag pasted or dragged into the terminal
     const imgDetection = detectImageInText(input);
     const runImages = [];
     let effectiveInput = input;
     if (imgDetection.hasImage) {
-      console.log(`  ${C.cyan}Imagen detectada:${C.reset} ${imgDetection.imagePath}`);
+      console.log(`  ${C.cyan}📷 Imagen adjuntada:${C.reset} ${imgDetection.imagePath}${imgDetection.fromClipboard ? ` ${C.gray}(del portapapeles)${C.reset}` : ''}`);
       runImages.push({
         path: imgDetection.imagePath,
         data_url: imgDetection.dataUrl,

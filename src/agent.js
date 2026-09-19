@@ -20,11 +20,13 @@ const { Tools, TOOL_DEFINITIONS, MAX_TOOL_OUTPUT, isCommandRisky, isCommandCatas
 const { Status, C, createLiveLine, createSpinner, formatBytes, formatDuration } = require('./ui');
 const { buildSystemPrompt } = require('./prompt');
 const { isDeizaHost } = require('./config');
+const { getActiveContextTokens } = require('./session');
 
 const MAX_TURNS = 120;             // tool rounds per user request (a long feature is many rounds)
 const MAX_CONTINUATIONS = 6;       // automatic "continue" after an output-limit cut, per request
 const MAX_FAILED_ROUNDS = 4;       // consecutive rounds where every tool call failed -> stop and tell the user
-const MAX_CONTEXT_CHARS = 700000;  // ~175k tokens: trims old tool output before the model chokes
+const MAX_CONTEXT_CHARS = 3500000; // ~900k tokens: allows full use of Kimi 2.5 1M context window
+const COMPACT_THRESHOLD_TOKENS = 750000; // Auto-compaction trigger threshold (75% of 1M)
 const DEFAULT_MAX_TOKENS = 16384;  // custom endpoints
 const DEIZA_MAX_TOKENS = 32768;    // the Deiza engine allows long outputs: whole files in one call
 
@@ -331,6 +333,129 @@ function argCommand(rawArgs) {
   try { return JSON.parse(`"${m[1]}"`); } catch { return m[1]; }
 }
 
+/**
+ * Smart conversation context compaction (Claude Code style auto-compaction).
+ * Compresses historical turns, tool outputs, and discussions into a dense, structured
+ * architectural summary, drastically reducing active tokens while preserving full memory.
+ */
+function compactContext(messages, { force = false } = {}) {
+  if (!Array.isArray(messages) || messages.length < 4) {
+    return { compacted: false, reason: 'history_too_short' };
+  }
+
+  const beforeTokens = getActiveContextTokens(messages);
+  if (!force && beforeTokens < COMPACT_THRESHOLD_TOKENS) {
+    return { compacted: false, reason: 'under_threshold', beforeTokens };
+  }
+
+  const sysMsg = messages[0]?.role === 'system' ? messages[0] : null;
+  const startIndex = sysMsg ? 1 : 0;
+  
+  // Keep the most recent user/assistant exchange intact (last 4 non-system turns)
+  const nonSystemCount = messages.length - startIndex;
+  if (nonSystemCount <= 3) {
+    return { compacted: false, reason: 'history_too_short' };
+  }
+  const keepCount = Math.min(4, Math.max(2, Math.floor(nonSystemCount / 3)));
+  const splitIndex = messages.length - keepCount;
+  if (splitIndex <= startIndex) {
+    return { compacted: false, reason: 'history_too_short' };
+  }
+
+  const turnsToCompact = messages.slice(startIndex, splitIndex);
+  const recentTurns = messages.slice(splitIndex);
+
+  // Extract user requests, files created/modified/read, bash commands, and assistant conclusions
+  const userRequests = [];
+  const modifiedFiles = new Set();
+  const readFiles = new Set();
+  const executedCommands = [];
+  const keyConclusions = [];
+
+  for (const m of turnsToCompact) {
+    if (!m) continue;
+    if (m.role === 'user') {
+      const text = typeof m.content === 'string' ? m.content : Array.isArray(m.content) ? m.content.map(p => p.text || '').join(' ') : '';
+      if (text && !text.startsWith('[MEMORIA DE SESIÓN COMPACTADA') && !text.startsWith('[CONTEXTO PREVIO COMPACTADO')) {
+        const firstLine = text.trim().split('\n')[0].slice(0, 140);
+        userRequests.push(firstLine);
+      }
+    } else if (m.role === 'assistant') {
+      if (Array.isArray(m.tool_calls)) {
+        for (const tc of m.tool_calls) {
+          const fn = tc?.function || {};
+          const name = fn.name;
+          const args = parseArgs(fn.arguments) || {};
+          if (name === 'write_file' || name === 'append_file' || name === 'edit_file') {
+            if (args.path) modifiedFiles.add(args.path);
+          } else if (name === 'read_file' || name === 'view_image') {
+            if (args.path) readFiles.add(args.path);
+          } else if (name === 'run_command' && args.command) {
+            executedCommands.push(args.command.slice(0, 90));
+          }
+        }
+      }
+      if (typeof m.content === 'string' && m.content.trim()) {
+        const lines = m.content.trim().split('\n').filter(l => l.trim());
+        const summarySnippet = lines[lines.length - 1].slice(0, 160);
+        if (summarySnippet && !summarySnippet.startsWith('✓')) {
+          keyConclusions.push(summarySnippet);
+        }
+      }
+    }
+  }
+
+  let summary = `[MEMORIA DE SESIÓN COMPACTADA · AUTO-COMPACT]\n`;
+  if (userRequests.length > 0) {
+    summary += `• Objetivos abordados por el usuario:\n  - ${userRequests.slice(-8).join('\n  - ')}\n`;
+  }
+  if (modifiedFiles.size > 0) {
+    summary += `• Archivos creados o modificados en la sesión:\n  - ${Array.from(modifiedFiles).join('\n  - ')}\n`;
+  }
+  if (readFiles.size > 0) {
+    summary += `• Archivos leídos o consultados:\n  - ${Array.from(readFiles).slice(-10).join('\n  - ')}\n`;
+  }
+  if (executedCommands.length > 0) {
+    summary += `• Comandos de terminal ejecutados:\n  - ${executedCommands.slice(-8).join('\n  - ')}\n`;
+  }
+  if (keyConclusions.length > 0) {
+    summary += `• Conclusiones técnicas y decisiones previas:\n  - ${keyConclusions.slice(-5).join('\n  - ')}\n`;
+  }
+  summary += `• Estado: Sesión compactada exitosamente. Continúa trabajando desde los mensajes recientes sin perder coherencia.`;
+
+  const compactAnchor = [
+    {
+      role: 'user',
+      content: summary,
+    },
+    {
+      role: 'assistant',
+      content: 'Memoria de la conversación compactada y consolidada. Tengo presente todo el historial del proyecto, archivos modificados y decisiones previas. Continuamos con el objetivo actual.',
+    },
+  ];
+
+  messages.length = 0;
+  if (sysMsg) messages.push(sysMsg);
+  messages.push(...compactAnchor);
+  messages.push(...recentTurns);
+
+  // Clean any dangling tool messages right after compact anchor
+  const anchorEnd = (sysMsg ? 1 : 0) + compactAnchor.length;
+  while (messages.length > anchorEnd && messages[anchorEnd].role === 'tool') {
+    messages.splice(anchorEnd, 1);
+  }
+
+  const afterTokens = getActiveContextTokens(messages);
+  const freedPct = Math.max(0, Math.round(((beforeTokens - afterTokens) / (beforeTokens || 1)) * 100));
+
+  return {
+    compacted: true,
+    beforeTokens,
+    afterTokens,
+    freedPct,
+  };
+}
+
 const TOOL_VERB = {
   write_file: '+ [write]', append_file: '+ [append]', edit_file: '✎ [edit]', read_file: '› [read]', list_dir: '› [list]',
   search_files: '› [search]', run_command: '⚡ [bash]', delete_path: '− [delete]', move_path: '→ [move]', fetch_url: '› [fetch]',
@@ -441,6 +566,16 @@ async function runAgentTurn({ cfg, messages, userInput, confirmCallback, mode = 
   while (stats.turns < MAX_TURNS) {
     if (signal?.aborted) { stopReason = 'aborted'; break; }
     stats.turns++;
+
+    // Auto-compaction if context approaches saturation (> 750k tokens)
+    if (getActiveContextTokens(messages) >= COMPACT_THRESHOLD_TOKENS) {
+      if (!quiet) console.log(`\n  ${C.gold}⚡ [Auto-Compactor] El contexto supera los ${(COMPACT_THRESHOLD_TOKENS / 1000).toFixed(0)}k tokens. Compactando memoria para mantener alta velocidad y precisión...${C.reset}`);
+      const comp = compactContext(messages, { force: true });
+      if (comp.compacted && !quiet) {
+        console.log(`  ${C.green}✓ Contexto compactado:${C.reset} de ${C.gold}${comp.beforeTokens.toLocaleString()} tokens${C.reset} a ${C.green}${comp.afterTokens.toLocaleString()} tokens${C.reset} (${comp.freedPct}% liberado)\n`);
+      }
+    }
+
     trimContext(messages);
 
     const promptLen = JSON.stringify(messages).length;
@@ -697,5 +832,7 @@ module.exports = {
   completionsUrl,
   streamCompletion,
   runAgentTurn,
+  compactContext,
+  COMPACT_THRESHOLD_TOKENS,
   TOOL_SPECS,
 };
