@@ -1,0 +1,37 @@
+{
+  "name": "deiza-code",
+  "version": "1.0.0",
+  "description": "Autonomous AI coding agent in your terminal. Native Deiza API integration, 1-click browser login, surgical code editing & adaptable to any LLM endpoint.",
+  "main": "src/index.js",
+  "bin": {
+    "deiza": "./bin/deiza.js",
+    "deiza-code": "./bin/deiza.js"
+  },
+  "keywords": [
+    "ai",
+    "coding-agent",
+    "cli",
+    "deiza",
+    "claude-code",
+    "developer-tools",
+    "llm",
+    "code-assistant",
+    "terminal",
+    "openai-compatible",
+    "ollama"
+  ],
+  "author": "Marcos De Aza <contact@deiza.org>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/marcosdeaza/deiza-code.git"
+  },
+  "bugs": {
+    "url": "https://github.com/marcosdeaza/deiza-code/issues"
+  },
+  "homepage": "https://deiza.org/download",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "preferGlobal": true
+}

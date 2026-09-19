@@ -1,0 +1,9 @@
+# Reglas de Proyecto para Deiza Code (.deizarules)
+# Coloca este archivo en la raíz de tu repositorio para guiar el comportamiento del agente.
+
+# Pautas de Desarrollo:
+- Utiliza TypeScript estricto con interfaces bien documentadas.
+- Prioriza código modular y funciones puras siempre que sea posible.
+- Todo nuevo endpoint debe incluir tests unitarios correspondientes.
+- Ejecuta `npm test` antes de dar una tarea por finalizada.
+- Nunca hagas commit de claves API ni archivos `.env`.
