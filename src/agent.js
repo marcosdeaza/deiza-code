@@ -457,9 +457,9 @@ function compactContext(messages, { force = false } = {}) {
 }
 
 const TOOL_VERB = {
-  write_file: '+ [write]', append_file: '+ [append]', edit_file: '✎ [edit]', read_file: '› [read]', list_dir: '› [list]',
-  search_files: '› [search]', run_command: '⚡ [bash]', delete_path: '− [delete]', move_path: '→ [move]', fetch_url: '› [fetch]',
-  update_plan: '▤ [plan]', invoke_subagent: '◆ [agent]', view_image: '› [vision]',
+  write_file: '+ [write]', append_file: '+ [append]', edit_file: '~ [edit]', read_file: '› [read]', list_dir: '› [list]',
+  search_files: '› [search]', run_command: '$ [bash]', delete_path: '- [delete]', move_path: '→ [move]', fetch_url: '› [fetch]',
+  update_plan: '* [plan]', invoke_subagent: '› [agent]', view_image: '› [image]',
 };
 const TOOL_COLOR = {
   write_file: C.green, append_file: C.green, edit_file: C.blue, read_file: C.cyan, list_dir: C.gray, search_files: C.gray,
@@ -569,7 +569,7 @@ async function runAgentTurn({ cfg, messages, userInput, confirmCallback, mode = 
 
     // Auto-compaction if context approaches saturation (> 750k tokens)
     if (getActiveContextTokens(messages) >= COMPACT_THRESHOLD_TOKENS) {
-      if (!quiet) console.log(`\n  ${C.gold}⚡ [Auto-Compactor] El contexto supera los ${(COMPACT_THRESHOLD_TOKENS / 1000).toFixed(0)}k tokens. Compactando memoria para mantener alta velocidad y precisión...${C.reset}`);
+      if (!quiet) console.log(`\n  ${C.gold}● [compactor]${C.reset} ${C.gray}El contexto supera los ${(COMPACT_THRESHOLD_TOKENS / 1000).toFixed(0)}k tokens. Compactando memoria para mantener máxima velocidad y precisión...${C.reset}`);
       const comp = compactContext(messages, { force: true });
       if (comp.compacted && !quiet) {
         console.log(`  ${C.green}✓ Contexto compactado:${C.reset} de ${C.gold}${comp.beforeTokens.toLocaleString()} tokens${C.reset} a ${C.green}${comp.afterTokens.toLocaleString()} tokens${C.reset} (${comp.freedPct}% liberado)\n`);
@@ -770,7 +770,7 @@ async function runAgentTurn({ cfg, messages, userInput, confirmCallback, mode = 
       if (['run_command', 'fetch_url', 'invoke_subagent'].includes(call.name)) {
         toolTimer = setInterval(() => {
           const el = formatDuration(Date.now() - t0);
-          live.set(`  ${C.gold}⚡ [ejecutando]${C.reset} ${C.white}${call.args?.command || call.name}${C.reset} ${C.darkGray}· ${el}${C.reset}`);
+          live.set(`  ${C.gold}$ [ejecutando]${C.reset} ${C.white}${call.args?.command || call.name}${C.reset} ${C.darkGray}· ${el}${C.reset}`);
         }, 120);
       }
       try {
@@ -788,16 +788,21 @@ async function runAgentTurn({ cfg, messages, userInput, confirmCallback, mode = 
     }
     if (stopReason === 'aborted') break;
 
-    failedRounds = roundOk === 0 ? failedRounds + 1 : 0;
-    if (failedRounds >= MAX_FAILED_ROUNDS) {
-      stopReason = 'stuck';
-      break;
-    }
+    if (!roundOk && toolCalls.length) failedRounds++;
+    else failedRounds = 0;
+    if (failedRounds >= MAX_FAILED_ROUNDS) { stopReason = 'stuck'; break; }
 
     if (truncated && continuations < MAX_CONTINUATIONS) {
       continuations++;
-      messages.push({ role: 'user', content: 'Tu respuesta anterior se cortó por el límite de longitud después de las llamadas que ya se ejecutaron. Continúa desde ese punto sin repetir trabajo hecho.' });
+      messages.push({ role: 'user', content: 'Continúa exactamente desde donde se cortó la respuesta.' });
+      continue;
     }
+    if (!toolCalls.length && looksUnfinished(assistantText) && !nudged) {
+      nudged = true;
+      messages.push({ role: 'user', content: 'Continúa y ejecuta la acción que acabas de anunciar con la herramienta correspondiente.' });
+      continue;
+    }
+    break;
   }
 
   if (stats.turns >= MAX_TURNS) stopReason = 'max_turns';
@@ -809,8 +814,8 @@ async function runAgentTurn({ cfg, messages, userInput, confirmCallback, mode = 
     if (stats.files.size) parts.push(`${stats.files.size} archivo${stats.files.size === 1 ? '' : 's'}`);
     if (stats.commands) parts.push(`${stats.commands} comando${stats.commands === 1 ? '' : 's'}`);
     parts.push(`${(stats.prompt + stats.completion).toLocaleString()} tokens`);
-    if (stopReason === 'aborted') console.log(`  ${C.gold}■ Interrumpido${C.reset} ${C.darkGray}· ${elapsed} · ${parts.join(' · ')}${C.reset}`);
-    else if (stopReason === 'max_turns') console.log(`  ${C.gold}⚠ Se alcanzó el máximo de ${MAX_TURNS} rondas en esta petición; pide "continúa" para seguir.${C.reset} ${C.darkGray}· ${elapsed} · ${parts.join(' · ')}${C.reset}`);
+    if (stopReason === 'aborted') console.log(`  ${C.gold}[interrumpido]${C.reset} ${C.darkGray}· ${elapsed} · ${parts.join(' · ')}${C.reset}`);
+    else if (stopReason === 'max_turns') console.log(`  ${C.gold}! Se alcanzó el máximo de ${MAX_TURNS} rondas en esta petición; pide "continúa" para seguir.${C.reset} ${C.darkGray}· ${elapsed} · ${parts.join(' · ')}${C.reset}`);
     else if (stopReason === 'stuck') console.log(`  ${C.granateBright}✖ El motor no consigue ejecutar sus propias llamadas (${MAX_FAILED_ROUNDS} rondas seguidas fallidas). Reformula la petición o divídela en pasos más pequeños.${C.reset} ${C.darkGray}· ${elapsed} · ${parts.join(' · ')}${C.reset}`);
     else console.log(`  ${C.green}✓ Completado con éxito en ${C.bold}${elapsed}${C.reset} ${C.darkGray}· ${parts.join(' · ')}${C.reset}`);
     console.log(`${C.granateDark}─────────────────────────────────────────────────────────────${C.reset}\n`);

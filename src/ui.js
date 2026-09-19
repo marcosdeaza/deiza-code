@@ -141,19 +141,19 @@ function createSpinner(live, label) {
 
 const Status = {
   thinking: `  ${C.granateBright}●${C.reset} ${C.gray}Analizando y procesando...${C.reset}`,
-  executing: (cmd) => `  ${C.gold}⚡ [bash]${C.reset} ${C.white}${cmd}${C.reset}`,
-  editing: (file) => `  ${C.blue}✎ [edit]${C.reset} ${C.white}${file}${C.reset}`,
+  executing: (cmd) => `  ${C.gold}$ [bash]${C.reset} ${C.white}${cmd}${C.reset}`,
+  editing: (file) => `  ${C.blue}~ [edit]${C.reset} ${C.white}${file}${C.reset}`,
   writing: (file) => `  ${C.green}+ [write]${C.reset} ${C.white}${file}${C.reset}`,
   appending: (file) => `  ${C.green}+ [append]${C.reset} ${C.white}${file}${C.reset}`,
   reading: (file) => `  ${C.cyan}› [read]${C.reset} ${C.white}${file}${C.reset}`,
   listing: (dir) => `  ${C.gray}› [list]${C.reset} ${C.white}${dir}${C.reset}`,
   searching: (query) => `  ${C.gray}› [search]${C.reset} ${C.white}${query}${C.reset}`,
-  deleting: (p) => `  ${C.red}− [delete]${C.reset} ${C.white}${p}${C.reset}`,
+  deleting: (p) => `  ${C.red}- [delete]${C.reset} ${C.white}${p}${C.reset}`,
   moving: (from, to) => `  ${C.gold}→ [move]${C.reset} ${C.white}${from} → ${to}${C.reset}`,
   fetching: (url) => `  ${C.cyan}› [fetch]${C.reset} ${C.white}${url}${C.reset}`,
-  planning: () => `  ${C.gold}▤ [plan]${C.reset} ${C.gray}actualizando el plan${C.reset}`,
-  subagent: (role, task) => `  ${C.rose}◆ [agent:${role}]${C.reset} ${C.white}${task}${C.reset}`,
-  vision: (file) => `  ${C.cyan}› [vision]${C.reset} ${C.white}${file}${C.reset}`,
+  planning: () => `  ${C.gold}* [plan]${C.reset} ${C.gray}actualizando el plan${C.reset}`,
+  subagent: (role, task) => `  ${C.rose}› [agent:${role}]${C.reset} ${C.white}${task}${C.reset}`,
+  vision: (file) => `  ${C.cyan}› [image]${C.reset} ${C.white}${file}${C.reset}`,
   success: `  ${C.green}✓${C.reset} ${C.white}Completado con éxito${C.reset}`,
   error: (msg) => `  ${C.granateBright}✖ Error:${C.reset} ${msg}`,
 };
@@ -335,7 +335,7 @@ function renderSessionList(sessions, activeSessionId) {
     totalTokensAll += (tokens.total || 0);
 
     const tokenStr = tokens.total > 0
-      ? `${C.gold}⚡ ${tokens.total.toLocaleString()} tok${C.reset}`
+      ? `${C.gold}${tokens.total.toLocaleString()} tok${C.reset}`
       : `${C.darkGray}0 tok${C.reset}`;
 
     content += `  ${bullet} ${C.bold}${C.white}${s.id}${C.reset}  ${modeStr}  ${C.gray}${dateStr}${C.reset}  ${C.white}${title}${C.reset}  ${tokenStr}  ${C.darkGray}(${s.messageCount} msgs)${C.reset}\n`;

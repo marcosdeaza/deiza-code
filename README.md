@@ -79,7 +79,7 @@ deiza --endpoint deiza
 
 ---
 
-## ⚡ Características Principales
+## Características Principales
 
 - **Tres modos de permisos: BUILD, COPILOT y PLAN:**
   - **BUILD (por defecto):** autónomo. Edita archivos, ejecuta comandos, instala dependencias y verifica sin pedir permiso. Solo se bloquean comandos catastróficos (borrar el disco, formatear, apagar la máquina).

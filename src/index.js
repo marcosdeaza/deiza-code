@@ -195,7 +195,7 @@ async function startRepl(initialConfig) {
   try {
     const remote = await checkLatestVersion();
     if (remote && remote.version && isNewerVersion(remote.version, VERSION)) {
-      console.log(`  ${C.gold}🔔 Nueva versión de Deiza Code disponible: ${C.bold}v${remote.version}${C.reset} ${C.gray}(instalada: v${VERSION})${C.reset}`);
+      console.log(`  ${C.gold}● Actualización disponible: ${C.bold}v${remote.version}${C.reset} ${C.gray}(instalada: v${VERSION})${C.reset}`);
       if (remote.notes) console.log(`  ${C.gray}Novedades: ${remote.notes}${C.reset}`);
       const shouldUpdate = await new Promise((resolve) => {
         rl.question(`  ${C.roseBold}¿Deseas actualizar ahora a la v${remote.version} automáticamente? [S/n]: ${C.reset}`, (ans) => {
@@ -240,7 +240,7 @@ async function startRepl(initialConfig) {
           const base = path.basename(clip.imagePath);
           const tag = `[image: ${base}]`;
           rl.write(tag + ' ');
-          process.stdout.write(`\n  ${C.cyan}📷 [Imagen pegada del portapapeles: ${base}]${C.reset}\n`);
+          process.stdout.write(`\n  ${C.cyan}› [image: ${base}]${C.reset} ${C.gray}(pegada del portapapeles)${C.reset}\n`);
           rl.prompt(true);
           return;
         }
@@ -381,7 +381,7 @@ async function startRepl(initialConfig) {
         return;
       }
       inputQueue.push(input);
-      console.log(`  ${C.rose}📥 [En cola #${inputQueue.length}]:${C.reset} "${input.length > 55 ? input.slice(0, 52) + '...' : input}" ${C.gray}(se ejecutará al terminar)${C.reset}`);
+      console.log(`  ${C.rose}› [en cola #${inputQueue.length}]:${C.reset} "${input.length > 55 ? input.slice(0, 52) + '...' : input}" ${C.gray}(se ejecutará al terminar)${C.reset}`);
       return;
     }
 
@@ -846,7 +846,7 @@ async function startRepl(initialConfig) {
     const runImages = [];
     let effectiveInput = input;
     if (imgDetection.hasImage) {
-      console.log(`  ${C.cyan}📷 Imagen adjuntada:${C.reset} ${imgDetection.imagePath}${imgDetection.fromClipboard ? ` ${C.gray}(del portapapeles)${C.reset}` : ''}`);
+      console.log(`  ${C.cyan}› [image]:${C.reset} ${imgDetection.imagePath}${imgDetection.fromClipboard ? ` ${C.gray}(portapapeles)${C.reset}` : ''}`);
       runImages.push({
         path: imgDetection.imagePath,
         data_url: imgDetection.dataUrl,

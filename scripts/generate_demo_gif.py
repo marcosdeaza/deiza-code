@@ -96,7 +96,7 @@ execution_steps = [
     # Step 3: Write test & run bash command
     [
         ("  + [write] test/metrics.test.ts (780 bytes)", C_GREEN),
-        ("  ⚡ [bash] npm test", C_GOLD),
+        ("  $ [bash] npm test", C_GOLD),
         ("  PASS test/metrics.test.ts", C_GREEN),
         ("  ✓ GET /metrics exports standard prometheus counters (18 ms)", C_GRAY),
         ("  Test Suites: 1 passed, 1 total | Tests: 1 passed, 1 total", C_GREEN),
