@@ -64,16 +64,86 @@ function renderModes(current) {
   return out;
 }
 
+/**
+ * Single terminal line that is rewritten in place (spinner, tool progress). Falls back to
+ * plain prints when stdout is not a TTY (logs, pipes).
+ */
+const isTTY = !!process.stdout.isTTY;
+const SPIN = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+
+function createLiveLine() {
+  let active = false;
+  let last = '';
+  return {
+    set(text) {
+      if (!isTTY) {
+        if (text !== last) process.stdout.write(text + '\n');
+        last = text;
+        return;
+      }
+      process.stdout.write(`\r\x1b[2K${text}`);
+      active = true;
+      last = text;
+    },
+    clear() {
+      if (active && isTTY) process.stdout.write('\r\x1b[2K');
+      active = false;
+      last = '';
+    },
+    done(finalText) {
+      if (finalText !== undefined) this.set(finalText);
+      if (active && isTTY) process.stdout.write('\n');
+      else if (!isTTY && finalText === undefined && last) { /* already printed */ }
+      active = false;
+      last = '';
+    },
+    isActive: () => active,
+  };
+}
+
+function createSpinner(live, label) {
+  const start = Date.now();
+  let frame = 0;
+  let timer = null;
+  const render = () => {
+    const secs = Math.floor((Date.now() - start) / 1000);
+    live.set(`  ${C.granateBright}${SPIN[frame % SPIN.length]}${C.reset} ${C.gray}${label}${secs >= 2 ? ` · ${secs}s` : ''}${C.reset}`);
+    frame++;
+  };
+  if (isTTY) { render(); timer = setInterval(render, 110); }
+  else process.stdout.write(`  ● ${label}\n`);
+  return {
+    stop() { if (timer) clearInterval(timer); timer = null; live.clear(); },
+  };
+}
+
+function formatBytes(n) {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function formatDuration(ms) {
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}s`;
+  return `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`;
+}
+
 const Status = {
   thinking: `  ${C.granateBright}●${C.reset} ${C.gray}Analizando y procesando...${C.reset}`,
   executing: (cmd) => `  ${C.gold}⚡ [bash]${C.reset} ${C.white}${cmd}${C.reset}`,
   editing: (file) => `  ${C.blue}✎ [edit]${C.reset} ${C.white}${file}${C.reset}`,
   writing: (file) => `  ${C.green}+ [write]${C.reset} ${C.white}${file}${C.reset}`,
-  reading: (file) => `  ${C.cyan}📖 [read]${C.reset} ${C.white}${file}${C.reset}`,
-  listing: (dir) => `  ${C.gray}📁 [list]${C.reset} ${C.white}${dir}${C.reset}`,
-  searching: (query) => `  ${C.gray}🔍 [search]${C.reset} ${C.white}${query}${C.reset}`,
-  subagent: (role, task) => `  ${C.rose}🤖 [agent:${role}]${C.reset} ${C.white}${task}${C.reset}`,
-  vision: (file) => `  ${C.cyan}👁 [vision]${C.reset} ${C.white}${file}${C.reset}`,
+  appending: (file) => `  ${C.green}+ [append]${C.reset} ${C.white}${file}${C.reset}`,
+  reading: (file) => `  ${C.cyan}› [read]${C.reset} ${C.white}${file}${C.reset}`,
+  listing: (dir) => `  ${C.gray}› [list]${C.reset} ${C.white}${dir}${C.reset}`,
+  searching: (query) => `  ${C.gray}› [search]${C.reset} ${C.white}${query}${C.reset}`,
+  deleting: (p) => `  ${C.red}− [delete]${C.reset} ${C.white}${p}${C.reset}`,
+  moving: (from, to) => `  ${C.gold}→ [move]${C.reset} ${C.white}${from} → ${to}${C.reset}`,
+  fetching: (url) => `  ${C.cyan}› [fetch]${C.reset} ${C.white}${url}${C.reset}`,
+  planning: () => `  ${C.gold}▤ [plan]${C.reset} ${C.gray}actualizando el plan${C.reset}`,
+  subagent: (role, task) => `  ${C.rose}◆ [agent:${role}]${C.reset} ${C.white}${task}${C.reset}`,
+  vision: (file) => `  ${C.cyan}› [vision]${C.reset} ${C.white}${file}${C.reset}`,
   success: `  ${C.green}✓${C.reset} ${C.white}Completado con éxito${C.reset}`,
   error: (msg) => `  ${C.granateBright}✖ Error:${C.reset} ${msg}`,
 };
@@ -294,6 +364,10 @@ function renderSessionInfo(session) {
 module.exports = {
   C,
   BANNER,
+  createLiveLine,
+  createSpinner,
+  formatBytes,
+  formatDuration,
   MODE_INFO,
   modeBadge,
   renderModes,

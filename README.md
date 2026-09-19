@@ -92,15 +92,21 @@ deiza --endpoint deiza
 - **Motor Multi-Agente:** Permite a Deiza Code delegar subtareas (investigación de contexto, auditorías de seguridad, ejecución de suites de test) a subagentes autónomos aislados (`invoke_subagent`).
 - **Visión Multimodal:** Soporte nativo para inspeccionar capturas de pantalla, maquetas y assets de diseño mediante comandos `/image`, `/paste` y la herramienta `view_image`.
 - **Edición Quirúrgica de Código:** Aplica reemplazos exactos mostrando **diffs visuales** en color verde y rojo directamente en la terminal antes y después de modificar archivos.
+- **Motor agéntico al estilo Claude Code (v1.5):**
+  - *Function calling nativo*: las herramientas se invocan como funciones reales del motor (con fallback a bloques XML en endpoints que no lo soporten).
+  - *Progreso en vivo*: mientras el motor escribe un archivo ves el nombre y el tamaño crecer; cada herramienta muestra su resultado (líneas escritas, salida del comando, diff).
+  - *Sin cortes*: si una respuesta o una llamada se corta por el límite de salida, Deiza Code la detecta y pide continuar por partes (`write_file` + `append_file`); si el modelo anuncia una acción sin ejecutarla, se le empuja a hacerlo.
+  - *Plan visible*: `update_plan` muestra y actualiza la lista de pasos de la tarea.
+  - *Esc* interrumpe una petición en curso sin salir; hasta 120 rondas de herramientas por petición.
 - **Herramientas Agénticas Integradas:**
-  - `read_file`: Lectura con rangos exactos de líneas.
-  - `edit_file`: Modificación precisa mediante reemplazo contextual único.
-  - `write_file`: Creación y sobreescritura de archivos con renderizado de diferencias.
-  - `list_dir`: Exploración jerárquica de carpetas y tamaños.
-  - `search_files`: Búsqueda rápida por texto o regex ignorando carpetas pesadas (`node_modules`, `.git`, etc.).
-  - `run_command`: Ejecución de comandos en bash con captura de salida y errores.
-  - `invoke_subagent`: Delegación concurrente de subtareas a subagentes de soporte.
-  - `view_image`: Análisis visual multimodal de maquetas e interfaces.
+  - `read_file`, `write_file`, `append_file`, `edit_file`: lectura por rangos, creación por partes, edición quirúrgica con diff.
+  - `list_dir`, `search_files` (texto/regex con glob): exploración del workspace ignorando carpetas pesadas.
+  - `run_command`: comandos con captura de salida, código de salida y timeout de hasta 10 minutos.
+  - `delete_path`, `move_path`: siempre dentro del workspace.
+  - `fetch_url`: documentación y APIs en texto legible.
+  - `update_plan`: plan de pasos visible para el usuario.
+  - `invoke_subagent`: delegación de subtareas a un worker aislado.
+  - `view_image`: análisis visual multimodal de maquetas e interfaces.
 - **Guardas de Seguridad:** en COPILOT se aprueba cada cambio; en cualquier modo los comandos que destruirían el sistema (`rm -rf /`, `mkfs`, `format C:`, apagar la máquina) se rechazan siempre.
 - **Detección Automática de Contexto:** Al arrancar en cualquier proyecto, detecta el branch de Git, archivos modificados, estructura de directorios y directivas (`.deizarules` o `CLAUDE.md`).
 - **Autenticación en 1 Clic:** levanta un callback loopback local en `127.0.0.1:54321` (o un puerto libre) y abre el navegador para vincular tu cuenta al instante. La sesión se revalida en cada arranque: sin cuenta o con plan Free, Deiza Code no arranca.

@@ -142,7 +142,7 @@ async function startRepl(initialConfig) {
     activeSession = createSession(process.cwd(), currentMode);
   }
 
-  console.log(`  ${C.gray}Escribe ${C.rose}/ ${C.gray}para ver comandos, o escribe tu petición directamente.${C.reset}\n`);
+  console.log(`  ${C.gray}Escribe ${C.rose}/ ${C.gray}para ver comandos, o escribe tu petición directamente. ${C.darkGray}Esc interrumpe una petición en curso.${C.reset}\n`);
 
   const getPrompt = () => {
     const curTokens = activeSession?.tokens?.total || 0;
@@ -175,8 +175,11 @@ async function startRepl(initialConfig) {
   let busy = false; // while the agent or a login prompt runs, the palette stays quiet
   if (process.stdin.isTTY) {
     readline.emitKeypressEvents(process.stdin, rl);
-    process.stdin.on('keypress', (str) => {
-      if (busy) return;
+    process.stdin.on('keypress', (str, key) => {
+      if (busy) {
+        if (key && key.name === 'escape' && abortCtl) abortCtl.abort();
+        return;
+      }
       if (str === '/' && rl.line === '') {
         if (keypressSlashTimer) clearTimeout(keypressSlashTimer);
         keypressSlashTimer = setTimeout(() => {
@@ -208,9 +211,11 @@ async function startRepl(initialConfig) {
     rl.setPrompt(getPrompt());
   };
 
-  // Runs one agent request with the terminal in "busy" state
+  // Runs one agent request with the terminal in "busy" state. Esc / Ctrl+C interrupt it.
+  let abortCtl = null;
   const runTurn = async (input, images = []) => {
     busy = true;
+    abortCtl = new AbortController();
     try {
       const turnResult = await runAgentTurn({
         cfg,
@@ -219,6 +224,8 @@ async function startRepl(initialConfig) {
         confirmCallback: confirmAction,
         mode: currentMode,
         images,
+        signal: abortCtl.signal,
+        onToolModeChange: () => saveConfig(cfg),
       });
       updateSessionTitleFromPrompt(activeSession, input);
       activeSession.messages = messages;
@@ -227,7 +234,11 @@ async function startRepl(initialConfig) {
       else saveSession(activeSession);
     } catch (err) {
       const msg = err?.message || String(err);
-      if (msg === 'AUTH_EXPIRED') {
+      if (msg === 'ABORTED') {
+        console.log(`\n  ${C.gold}■ Petición interrumpida.${C.reset}\n`);
+        activeSession.messages = messages;
+        saveSession(activeSession);
+      } else if (msg === 'AUTH_EXPIRED') {
         console.log(Status.error('Tu sesión ha expirado o la clave fue revocada.'));
         await doLogin(true);
       } else if (msg === 'PLAN_REQUIRED') {
@@ -238,9 +249,10 @@ async function startRepl(initialConfig) {
         console.log(Status.error(msg));
       }
       // Drop the dangling user message so a retry does not duplicate it
-      if (messages.length && messages[messages.length - 1].role === 'user') messages.pop();
+      if (msg !== 'ABORTED' && messages.length && messages[messages.length - 1].role === 'user') messages.pop();
     } finally {
       busy = false;
+      abortCtl = null;
     }
   };
 
@@ -732,6 +744,11 @@ async function startRepl(initialConfig) {
     console.log(`  ${C.green}✓ Endpoint actualizado a:${C.reset} ${cfg.apiBase} ${C.gray}(modelo: ${cfg.model})${C.reset}`);
     console.log(`  ${C.gray}Si el servidor requiere clave: DEIZA_ENDPOINT_KEY o deiza --endpoint <url> --key <clave>.${C.reset}\n`);
   }
+
+  rl.on('SIGINT', () => {
+    if (busy && abortCtl) { abortCtl.abort(); return; }
+    rl.close();
+  });
 
   rl.on('close', () => {
     console.log(`\n${C.gray}Sesión finalizada.${C.reset}\n`);
