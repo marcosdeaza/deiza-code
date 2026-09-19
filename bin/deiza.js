@@ -10,7 +10,7 @@ const { loadConfig, saveConfig, VERSION, DEFAULT_MODEL, MODES, IS_CLOSED, normal
 const { ensureAuthenticated, askLine } = require('../src/auth');
 const { startRepl } = require('../src/index');
 const { runAgentTurn } = require('../src/agent');
-const { listSessions, createSession, loadSession, deleteSession, getLatestSession } = require('../src/session');
+const { listSessions, createSession, loadSession, deleteSession, getLatestSession, getActiveContextTokens } = require('../src/session');
 
 function printHelp() {
   console.log(`
@@ -49,20 +49,21 @@ Ejemplos:
 }
 
 function printTokens(ses) {
-  const curTokens = ses?.tokens || { prompt: 0, completion: 0, total: 0 };
+  const activeContext = ses?.messages ? getActiveContextTokens(ses.messages) : (ses?.contextTokens || 0);
   const maxTokens = 1000000;
-  const total = curTokens.total || 0;
-  const pct = ((total / maxTokens) * 100).toFixed(2);
-  const remaining = Math.max(0, maxTokens - total);
+  const pct = ((activeContext / maxTokens) * 100).toFixed(2);
+  const remaining = Math.max(0, maxTokens - activeContext);
+  const sessionTotal = ses?.tokens?.total || 0;
   let content = '';
-  content += `${C.white}Motor de Inferencia:${C.reset}     ${C.granateBright}deiza-omniscient${C.reset} ${C.gray}(Deiza Liquid 5.1 · infraestructura dedicada)${C.reset}\n`;
-  content += `${C.white}Ventana de Contexto:${C.reset}     ${C.bold}1,000,000 (1M)${C.reset} tokens de sesión\n`;
-  content += `${C.white}Tokens en Contexto:${C.reset}      ${C.bold}${C.green}${total.toLocaleString()}${C.reset} / 1,000,000 tokens (${pct}% ocupado)\n`;
+  content += `${C.white}Motor de Inferencia:${C.reset}     ${C.granateBright}deiza-omniscient${C.reset} ${C.gray}(Liquid 5.1 / Kimi K2.5 · AWS Dedicated)${C.reset}\n`;
+  content += `${C.white}Ventana de Contexto:${C.reset}     ${C.bold}1,000,000 (1M)${C.reset} tokens nativos\n`;
+  content += `${C.white}Contexto Activo en Memoria:${C.reset} ${C.bold}${C.green}${activeContext.toLocaleString()}${C.reset} / 1,000,000 tokens (${pct}% ocupado)\n`;
   content += `${C.white}Capacidad Disponible:${C.reset}    ${C.bold}${remaining.toLocaleString()}${C.reset} tokens libres\n\n`;
-  content += `${C.granateBright}── Desglose de la Sesión (${ses?.id || 'sin sesión activa'}) ──${C.reset}\n`;
-  content += `${C.white}• Prompt (Entrada):${C.reset}         ${C.gold}${(curTokens.prompt || 0).toLocaleString()}${C.reset} tokens\n`;
-  content += `${C.white}• Completion (Salida):${C.reset}     ${C.gold}${(curTokens.completion || 0).toLocaleString()}${C.reset} tokens\n`;
-  console.log(box('Métricas de Contexto y Tokens (Ventana 1M)', content, C.granate));
+  content += `${C.granateBright}── Métricas de la Sesión (${ses?.id || 'sin sesión activa'}) ──${C.reset}\n`;
+  content += `${C.white}• Tokens Consumidos:${C.reset}       ${C.gold}${sessionTotal.toLocaleString()}${C.reset} tokens facturados acumulados\n`;
+  content += `${C.white}• Entrada (Prompt):${C.reset}        ${(ses?.tokens?.prompt || 0).toLocaleString()} tokens\n`;
+  content += `${C.white}• Salida (Completion):${C.reset}    ${(ses?.tokens?.completion || 0).toLocaleString()} tokens\n`;
+  console.log(box('Métricas de Contexto y Ventana 1M', content, C.granate));
 }
 
 function handleSessionCommand(args) {

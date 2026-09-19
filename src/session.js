@@ -45,6 +45,30 @@ function estimateTokens(text) {
 }
 
 /**
+ * Accurately calculates current active context tokens from in-memory messages array
+ */
+function getActiveContextTokens(messages = []) {
+  if (!Array.isArray(messages) || messages.length === 0) return 0;
+  let totalChars = 0;
+  for (const m of messages) {
+    if (!m) continue;
+    if (typeof m.content === 'string') {
+      totalChars += m.content.length;
+    } else if (Array.isArray(m.content)) {
+      for (const part of m.content) {
+        if (typeof part?.text === 'string') totalChars += part.text.length;
+      }
+    }
+    if (Array.isArray(m.tool_calls)) {
+      for (const tc of m.tool_calls) {
+        totalChars += String(tc?.function?.arguments || '').length + 50;
+      }
+    }
+  }
+  return Math.max(1, Math.ceil(totalChars / 3.8));
+}
+
+/**
  * Creates a new session object
  */
 function createSession(cwd = process.cwd(), mode = 'build', customTitle = null) {
@@ -56,6 +80,7 @@ function createSession(cwd = process.cwd(), mode = 'build', customTitle = null) 
     mode,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
+    contextTokens: 0,
     tokens: {
       prompt: 0,
       completion: 0,
@@ -78,6 +103,9 @@ function saveSession(session) {
     session.updatedAt = new Date().toISOString();
     if (!session.tokens) {
       session.tokens = { prompt: 0, completion: 0, total: 0 };
+    }
+    if (Array.isArray(session.messages)) {
+      session.contextTokens = getActiveContextTokens(session.messages);
     }
     fs.writeFileSync(filePath, JSON.stringify(session, null, 2), 'utf8');
   } catch (err) {
@@ -119,6 +147,9 @@ function loadSession(sessionIdOrQuery, cwd = process.cwd()) {
       if (!data.tokens) {
         data.tokens = { prompt: 0, completion: 0, total: 0 };
       }
+      if (!data.contextTokens && Array.isArray(data.messages)) {
+        data.contextTokens = getActiveContextTokens(data.messages);
+      }
       return data;
     }
   } catch (err) {}
@@ -128,7 +159,7 @@ function loadSession(sessionIdOrQuery, cwd = process.cwd()) {
 /**
  * Adds token consumption to a session
  */
-function addSessionTokens(session, usage = {}) {
+function addSessionTokens(session, usage = {}, messages = null) {
   if (!session) return;
   if (!session.tokens) {
     session.tokens = { prompt: 0, completion: 0, total: 0 };
@@ -140,6 +171,12 @@ function addSessionTokens(session, usage = {}) {
   session.tokens.prompt = (session.tokens.prompt || 0) + p;
   session.tokens.completion = (session.tokens.completion || 0) + c;
   session.tokens.total = (session.tokens.total || 0) + t;
+
+  if (messages && Array.isArray(messages)) {
+    session.contextTokens = getActiveContextTokens(messages);
+  } else if (Array.isArray(session.messages)) {
+    session.contextTokens = getActiveContextTokens(session.messages);
+  }
   saveSession(session);
 }
 
@@ -159,19 +196,18 @@ function listSessions(cwd = process.cwd()) {
         const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
         sessions.push({
           id: data.id,
-          title: data.title || 'Conversación',
+          title: data.title || 'Conversación sin título',
+          mode: data.mode || 'build',
           createdAt: data.createdAt,
           updatedAt: data.updatedAt,
-          mode: data.mode || 'build',
-          messageCount: Array.isArray(data.messages) ? data.messages.length : 0,
+          contextTokens: data.contextTokens || getActiveContextTokens(data.messages || []),
           tokens: data.tokens || { prompt: 0, completion: 0, total: 0 },
+          messageCount: Array.isArray(data.messages) ? data.messages.length : 0,
         });
-      } catch (e) {}
+      } catch (err) {}
     }
 
-    // Sort by updatedAt desc
-    sessions.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-    return sessions;
+    return sessions.sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0));
   } catch (err) {
     return [];
   }
@@ -225,6 +261,7 @@ module.exports = {
   updateSessionTitleFromPrompt,
   deleteSession,
   addSessionTokens,
+  getActiveContextTokens,
   estimateTokens,
   findSessionId,
   getWorkspaceHash,

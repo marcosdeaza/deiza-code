@@ -19,7 +19,7 @@ const DEIZA_DIR = path.join(os.homedir(), '.deiza');
 const CONFIG_FILE = path.join(DEIZA_DIR, 'config.json');
 const SESSIONS_DIR = path.join(DEIZA_DIR, 'sessions');
 
-const VERSION = '1.5.0';
+const VERSION = '1.6.0';
 const DEFAULT_DEIZA_API = 'https://deiza.org';
 const DEFAULT_MODEL = 'deiza-omniscient';
 

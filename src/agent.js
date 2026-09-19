@@ -631,14 +631,23 @@ async function runAgentTurn({ cfg, messages, userInput, confirmCallback, mode = 
       if (call.name === 'run_command') stats.commands++;
       const t0 = Date.now();
       let toolResult;
+      let toolTimer = null;
+      if (['run_command', 'fetch_url', 'invoke_subagent'].includes(call.name)) {
+        toolTimer = setInterval(() => {
+          const el = formatDuration(Date.now() - t0);
+          live.set(`  ${C.gold}⚡ [ejecutando]${C.reset} ${C.white}${call.args?.command || call.name}${C.reset} ${C.darkGray}· ${el}${C.reset}`);
+        }, 120);
+      }
       try {
         toolResult = await fn(call.args, { cfg, mode, messages, streamCompletion, quietDiff: previewed });
       } catch (err) {
         toolResult = { error: err.message };
+      } finally {
+        if (toolTimer) { clearInterval(toolTimer); toolTimer = null; live.clear(); }
       }
       const summary = toolResultSummary(call.name, toolResult);
       const took = Date.now() - t0;
-      if (summary) console.log(summary + (took > 3000 ? ` ${C.darkGray}· ${formatDuration(took)}${C.reset}` : ''));
+      if (summary) console.log(summary + (took > 1500 ? ` ${C.darkGray}· ${formatDuration(took)}${C.reset}` : ''));
       pushResult(call, toolResult);
       if (!(toolResult && toolResult.error)) roundOk++;
     }
@@ -664,11 +673,11 @@ async function runAgentTurn({ cfg, messages, userInput, confirmCallback, mode = 
     if (stats.tools) parts.push(`${stats.tools} herramienta${stats.tools === 1 ? '' : 's'}`);
     if (stats.files.size) parts.push(`${stats.files.size} archivo${stats.files.size === 1 ? '' : 's'}`);
     if (stats.commands) parts.push(`${stats.commands} comando${stats.commands === 1 ? '' : 's'}`);
-    parts.push(elapsed, `${(stats.prompt + stats.completion).toLocaleString()} tokens`);
-    if (stopReason === 'aborted') console.log(`  ${C.gold}■ Interrumpido${C.reset} ${C.darkGray}· ${parts.join(' · ')}${C.reset}`);
-    else if (stopReason === 'max_turns') console.log(`  ${C.gold}⚠ Se alcanzó el máximo de ${MAX_TURNS} rondas en esta petición; pide "continúa" para seguir.${C.reset} ${C.darkGray}· ${parts.join(' · ')}${C.reset}`);
-    else if (stopReason === 'stuck') console.log(`  ${C.granateBright}✖ El motor no consigue ejecutar sus propias llamadas (${MAX_FAILED_ROUNDS} rondas seguidas fallidas). Reformula la petición o divídela en pasos más pequeños.${C.reset} ${C.darkGray}· ${parts.join(' · ')}${C.reset}`);
-    else console.log(`  ${C.green}✓ Completado${C.reset} ${C.darkGray}· ${parts.join(' · ')}${C.reset}`);
+    parts.push(`${(stats.prompt + stats.completion).toLocaleString()} tokens`);
+    if (stopReason === 'aborted') console.log(`  ${C.gold}■ Interrumpido${C.reset} ${C.darkGray}· ${elapsed} · ${parts.join(' · ')}${C.reset}`);
+    else if (stopReason === 'max_turns') console.log(`  ${C.gold}⚠ Se alcanzó el máximo de ${MAX_TURNS} rondas en esta petición; pide "continúa" para seguir.${C.reset} ${C.darkGray}· ${elapsed} · ${parts.join(' · ')}${C.reset}`);
+    else if (stopReason === 'stuck') console.log(`  ${C.granateBright}✖ El motor no consigue ejecutar sus propias llamadas (${MAX_FAILED_ROUNDS} rondas seguidas fallidas). Reformula la petición o divídela en pasos más pequeños.${C.reset} ${C.darkGray}· ${elapsed} · ${parts.join(' · ')}${C.reset}`);
+    else console.log(`  ${C.green}✓ Completado con éxito en ${C.bold}${elapsed}${C.reset} ${C.darkGray}· ${parts.join(' · ')}${C.reset}`);
     console.log(`${C.granateDark}─────────────────────────────────────────────────────────────${C.reset}\n`);
   }
 
@@ -676,6 +685,8 @@ async function runAgentTurn({ cfg, messages, userInput, confirmCallback, mode = 
     turnCount: stats.turns,
     toolsExecuted: stats.tools,
     stopReason,
+    elapsedMs: Date.now() - startedAt,
+    elapsedText: formatDuration(Date.now() - startedAt),
     usage: { promptTokens: stats.prompt, completionTokens: stats.completion, totalTokens: stats.prompt + stats.completion },
   };
 }

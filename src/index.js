@@ -6,18 +6,34 @@
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
-const { exec } = require('child_process');
+const { exec, spawn } = require('child_process');
 const readline = require('readline');
-const { C, BANNER, Status, box, COMMANDS_REGISTRY, MODE_INFO, modeBadge, renderModes, renderCommandPalette, renderWhoami, renderSessionList, renderSessionInfo } = require('./ui');
+const { C, BANNER, Status, box, COMMANDS_REGISTRY, MODE_INFO, modeBadge, renderModes, renderCommandPalette, renderWhoami, renderSessionList, renderSessionInfo, selectSessionInteractive } = require('./ui');
 const { loadConfig, saveConfig, DEFAULT_MODEL, VERSION, MODES, IS_CLOSED, normalizeMode, normalizeUrl, isDeizaHost } = require('./config');
 const { runLoginFlow, ensureAuthenticated, fetchModels, fetchUsage } = require('./auth');
 const { runAgentTurn, streamCompletion } = require('./agent');
 const { Tools } = require('./tools');
 const { getGitContext, detectProjectType } = require('./context');
-const { createSession, saveSession, loadSession, listSessions, getLatestSession, updateSessionTitleFromPrompt, deleteSession, addSessionTokens } = require('./session');
+const { createSession, saveSession, loadSession, listSessions, getLatestSession, updateSessionTitleFromPrompt, deleteSession, addSessionTokens, getActiveContextTokens } = require('./session');
 const { detectImageInText, getClipboardImage } = require('./clipboard');
 
 const UPDATE_BASE = 'https://deiza.org/downloads';
+
+function restartSelf() {
+  try {
+    const child = spawn(process.argv[0], process.argv.slice(1), {
+      stdio: 'inherit',
+      env: process.env,
+      detached: false,
+    });
+    child.on('close', (code) => {
+      process.exit(code || 0);
+    });
+    setTimeout(() => process.exit(0), 1200);
+  } catch {
+    process.exit(0);
+  }
+}
 
 async function checkLatestVersion() {
   return new Promise((resolve) => {
@@ -145,7 +161,7 @@ async function startRepl(initialConfig) {
   console.log(`  ${C.gray}Escribe ${C.rose}/ ${C.gray}para ver comandos, o escribe tu petición directamente. ${C.darkGray}Esc interrumpe una petición en curso.${C.reset}\n`);
 
   const getPrompt = () => {
-    const curTokens = activeSession?.tokens?.total || 0;
+    const curTokens = getActiveContextTokens(messages);
     const tokLabel = curTokens >= 1000000
       ? `${(curTokens / 1000000).toFixed(2)}M`
       : curTokens >= 1000 ? `${(curTokens / 1000).toFixed(1)}k` : `${curTokens}`;
@@ -170,9 +186,40 @@ async function startRepl(initialConfig) {
     terminal: process.stdin.isTTY,
   });
 
+  // Startup lightweight update check (< 2s) with interactive prompt and instant restart
+  try {
+    const remote = await checkLatestVersion();
+    if (remote && remote.version && isNewerVersion(remote.version, VERSION)) {
+      console.log(`  ${C.gold}🔔 Nueva versión de Deiza Code disponible: ${C.bold}v${remote.version}${C.reset} ${C.gray}(instalada: v${VERSION})${C.reset}`);
+      if (remote.notes) console.log(`  ${C.gray}Novedades: ${remote.notes}${C.reset}`);
+      const shouldUpdate = await new Promise((resolve) => {
+        rl.question(`  ${C.roseBold}¿Deseas actualizar ahora a la v${remote.version} automáticamente? [S/n]: ${C.reset}`, (ans) => {
+          const a = String(ans || '').trim().toLowerCase();
+          resolve(a === '' || a === 's' || a === 'si' || a === 'sí' || a === 'y' || a === 'yes');
+        });
+      });
+      if (shouldUpdate) {
+        console.log(`\n  ${C.granateBright}●${C.reset} ${C.white}Descargando e instalando actualización...${C.reset}`);
+        try {
+          await runAutoUpdate();
+          console.log(`  ${C.green}✓ Deiza Code actualizado con éxito.${C.reset}`);
+          console.log(`  ${C.cyan}↻ Reiniciando Deiza Code en la nueva versión...${C.reset}\n`);
+          restartSelf();
+          return;
+        } catch (err) {
+          console.log(Status.error(`Error en auto-actualización: ${err.message}`));
+        }
+      } else {
+        console.log(`  ${C.gray}Continuando con la versión actual (puedes actualizar después con /update).${C.reset}\n`);
+      }
+    }
+  } catch {}
+
   // Typing '/' on an empty line shows the command palette (debounced so pastes are not corrupted)
   let keypressSlashTimer = null;
   let busy = false; // while the agent or a login prompt runs, the palette stays quiet
+  const inputQueue = [];
+
   if (process.stdin.isTTY) {
     readline.emitKeypressEvents(process.stdin, rl);
     process.stdin.on('keypress', (str, key) => {
@@ -230,7 +277,7 @@ async function startRepl(initialConfig) {
       updateSessionTitleFromPrompt(activeSession, input);
       activeSession.messages = messages;
       activeSession.mode = currentMode;
-      if (turnResult?.usage) addSessionTokens(activeSession, turnResult.usage);
+      if (turnResult?.usage) addSessionTokens(activeSession, turnResult.usage, messages);
       else saveSession(activeSession);
     } catch (err) {
       const msg = err?.message || String(err);
@@ -253,6 +300,19 @@ async function startRepl(initialConfig) {
     } finally {
       busy = false;
       abortCtl = null;
+
+      // Drain inputQueue if user submitted commands/instructions while agent was working
+      if (inputQueue.length > 0) {
+        setImmediate(async () => {
+          while (inputQueue.length > 0) {
+            const nextInput = inputQueue.shift();
+            console.log(`\n  ${C.roseBold}❯ Ejecutando desde cola:${C.reset} ${C.white}${nextInput}${C.reset}`);
+            await runTurn(nextInput);
+          }
+          rl.setPrompt(getPrompt());
+          rl.prompt();
+        });
+      }
     }
   };
 
@@ -280,9 +340,31 @@ async function startRepl(initialConfig) {
   rl.prompt();
 
   rl.on('line', async (line) => {
-    if (busy) return; // a login/confirm prompt owns the input right now
     const input = (line || '').replace(/\r/g, '').trim();
-    if (!input) { rl.prompt(); return; }
+    if (!input) {
+      if (!busy) rl.prompt();
+      return;
+    }
+
+    if (busy) {
+      // User typed while agent is working!
+      if (input === '/abort' || input === '/cancel' || input === 'q') {
+        if (abortCtl) {
+          console.log(`\n  ${C.gold}■ Interrumpiendo tarea en curso...${C.reset}`);
+          abortCtl.abort();
+        }
+        return;
+      }
+      if (input === '/' || input === '/help') {
+        console.log(`\n  ${C.granateBold}Comandos durante la ejecución:${C.reset}`);
+        console.log(`    ${C.gold}Esc / /abort${C.reset}   Interrumpir la tarea actual`);
+        console.log(`    ${C.white}Texto...${C.reset}       Se añade a la cola para ejecutarse al terminar\n`);
+        return;
+      }
+      inputQueue.push(input);
+      console.log(`  ${C.rose}📥 [En cola #${inputQueue.length}]:${C.reset} "${input.length > 55 ? input.slice(0, 52) + '...' : input}" ${C.gray}(se ejecutará al terminar)${C.reset}`);
+      return;
+    }
 
     if (input.startsWith('/')) {
       const parts = input.split(/\s+/);
@@ -321,8 +403,44 @@ async function startRepl(initialConfig) {
         return;
       }
 
-      if (cmd === '/session' || cmd === '/sessions' || cmd === '/history') {
-        const sub = (parts[1] || 'list').toLowerCase();
+      if (cmd === '/session' || cmd === '/sessions' || cmd === '/history' || cmd === '/resume') {
+        const sub = (parts[1] || '').toLowerCase();
+
+        // If invoked without argument (e.g. /session or /resume), launch the interactive arrow-key selector!
+        if (!sub || (cmd === '/resume' && !parts[1])) {
+          const sessions = listSessions(process.cwd());
+          if (sessions.length === 0) {
+            console.log(`\n  ${C.gray}No hay conversaciones previas en este workspace. Usa ${C.white}/session new${C.gray} para crear una.${C.reset}\n`);
+            rl.prompt();
+            return;
+          }
+
+          rl.pause();
+          const chosen = await selectSessionInteractive(sessions, activeSession?.id);
+          rl.resume();
+
+          if (!chosen) {
+            console.log(`  ${C.gray}Selección cancelada.${C.reset}\n`);
+          } else if (chosen.type === 'new') {
+            activeSession = createSession(process.cwd(), currentMode);
+            messages.length = 0;
+            console.log(`\n  ${C.green}✓ Nueva sesión iniciada:${C.reset} ${C.bold}${activeSession.id}${C.reset}\n`);
+          } else if (chosen.id) {
+            const loaded = loadSession(chosen.id, process.cwd());
+            if (loaded) {
+              activeSession = loaded;
+              messages.length = 0;
+              if (Array.isArray(loaded.messages)) messages.push(...loaded.messages);
+              if (loaded.mode) currentMode = normalizeMode(loaded.mode);
+              const ctxTokens = getActiveContextTokens(messages);
+              console.log(`\n  ${C.green}✓ Sesión cargada:${C.reset} ${C.bold}${loaded.title}${C.reset} ${C.gray}(${messages.length} msgs · ${ctxTokens.toLocaleString()} tokens en contexto)${C.reset}\n`);
+            }
+          }
+          rl.setPrompt(getPrompt());
+          rl.prompt();
+          return;
+        }
+
         if (sub === 'list' || sub === 'ls') {
           console.log(renderSessionList(listSessions(process.cwd()), activeSession?.id));
           rl.prompt();
@@ -377,7 +495,7 @@ async function startRepl(initialConfig) {
             messages.length = 0;
             if (Array.isArray(loaded.messages)) messages.push(...loaded.messages);
             if (loaded.mode) currentMode = normalizeMode(loaded.mode);
-            const tokStr = loaded.tokens?.total ? ` · ${C.gold}${loaded.tokens.total.toLocaleString()} tokens${C.reset}` : '';
+            const tokStr = loaded.tokens?.total ? ` · ${C.gold}${loaded.tokens.total.toLocaleString()} tokens consumidos${C.reset}` : '';
             console.log(`\n  ${C.green}✓ Sesión restaurada:${C.reset} ${C.bold}${loaded.title}${C.reset} ${C.gray}(${messages.length} msgs${tokStr})${C.reset}\n`);
             rl.setPrompt(getPrompt());
           } else {
@@ -398,6 +516,7 @@ async function startRepl(initialConfig) {
           return;
         }
         console.log(`\n${C.granateBold}Gestor de Sesiones (/session):${C.reset}`);
+        console.log(`  ${C.white}/session${C.reset}                   Selector interactivo con flechas [↑/↓]`);
         console.log(`  ${C.white}/session list${C.reset}              Ver todas las sesiones y consumo de tokens`);
         console.log(`  ${C.white}/session new [nombre]${C.reset}      Crear e iniciar una nueva sesión en limpio`);
         console.log(`  ${C.white}/session resume <id>${C.reset}       Cargar y reanudar una sesión guardada`);
@@ -408,22 +527,24 @@ async function startRepl(initialConfig) {
       }
 
       if (cmd === '/tokens' || cmd === '/context') {
-        const curTokens = activeSession?.tokens || { prompt: 0, completion: 0, total: 0 };
+        const activeContext = getActiveContextTokens(messages);
         const maxTokens = 1000000;
-        const total = curTokens.total || 0;
-        const pct = ((total / maxTokens) * 100).toFixed(2);
-        const remaining = Math.max(0, maxTokens - total);
+        const pct = ((activeContext / maxTokens) * 100).toFixed(2);
+        const remaining = Math.max(0, maxTokens - activeContext);
+        const sessionConsumed = activeSession?.tokens?.total || 0;
+
         let content = '';
-        content += `${C.white}Motor de Inferencia:${C.reset}     ${C.granateBright}${cfg.isCustomEndpoint ? cfg.model : 'deiza-omniscient'}${C.reset} ${cfg.isCustomEndpoint ? `${C.gray}(${cfg.apiBase})${C.reset}` : `${C.gray}(Deiza Liquid 5.1 · infraestructura dedicada)${C.reset}`}\n`;
-        content += `${C.white}Ventana de Contexto:${C.reset}     ${C.bold}1,000,000 (1M)${C.reset} tokens de sesión\n`;
-        content += `${C.white}Tokens en Contexto:${C.reset}      ${C.bold}${C.green}${total.toLocaleString()}${C.reset} / 1,000,000 tokens (${pct}% ocupado)\n`;
-        content += `${C.white}Capacidad Disponible:${C.reset}    ${C.bold}${remaining.toLocaleString()}${C.reset} tokens libres\n\n`;
-        content += `${C.granateBright}── Desglose de la Sesión Activa (${activeSession?.id || 'sesión'}) ──${C.reset}\n`;
-        content += `${C.white}• Prompt (Entrada):${C.reset}         ${C.gold}${(curTokens.prompt || 0).toLocaleString()}${C.reset} tokens\n`;
-        content += `${C.white}• Completion (Salida):${C.reset}     ${C.gold}${(curTokens.completion || 0).toLocaleString()}${C.reset} tokens\n`;
-        content += `${C.white}• Turnos en Memoria:${C.reset}       ${C.cyan}${messages.length}${C.reset} mensajes activos\n\n`;
-        content += `${C.gray}Comandos rápidos: /clear (vaciar contexto) · /session new [nombre] · /usage (cuota 5h)${C.reset}`;
-        console.log(box('Métricas de Contexto y Tokens (Ventana 1M)', content, C.granate));
+        content += `${C.white}Motor de Inferencia:${C.reset}     ${C.granateBright}${cfg.isCustomEndpoint ? cfg.model : 'deiza-omniscient'}${C.reset} ${cfg.isCustomEndpoint ? `${C.gray}(${cfg.apiBase})${C.reset}` : `${C.gray}(Liquid 5.1 / Kimi K2.5 · AWS Cluster)${C.reset}`}\n`;
+        content += `${C.white}Ventana de Contexto:${C.reset}     ${C.bold}1,000,000 (1M)${C.reset} tokens nativos\n`;
+        content += `${C.white}Contexto Activo en Memoria:${C.reset} ${C.bold}${C.green}${activeContext.toLocaleString()}${C.reset} / 1,000,000 tokens (${pct}% ocupado)\n`;
+        content += `${C.white}Capacidad Libre Ventana:${C.reset}   ${C.bold}${remaining.toLocaleString()}${C.reset} tokens disponibles\n\n`;
+        content += `${C.granateBright}── Métricas de la Sesión (${activeSession?.id || 'sin sesión'}) ──${C.reset}\n`;
+        content += `${C.white}• Mensajes en Historial:${C.reset}   ${messages.length} mensajes guardados\n`;
+        content += `${C.white}• Tokens Consumidos:${C.reset}       ${C.gold}${sessionConsumed.toLocaleString()}${C.reset} tokens facturados acumulados\n`;
+        content += `${C.white}• Prompt (Entrada):${C.reset}        ${(activeSession?.tokens?.prompt || 0).toLocaleString()} tokens\n`;
+        content += `${C.white}• Completion (Salida):${C.reset}    ${(activeSession?.tokens?.completion || 0).toLocaleString()} tokens\n`;
+
+        console.log(box('Métricas de Contexto y Ventana 1M', content, C.granate));
         rl.prompt();
         return;
       }
@@ -434,28 +555,6 @@ async function startRepl(initialConfig) {
         messages.length = 0;
         console.log(`\n  ${C.green}✓ Nueva conversación iniciada en limpio:${C.reset} ${C.bold}${activeSession.id}${C.reset}${title ? ` ("${title}")` : ''}\n`);
         rl.setPrompt(getPrompt());
-        rl.prompt();
-        return;
-      }
-
-      if (cmd === '/resume') {
-        const targetId = parts[1];
-        if (!targetId) {
-          console.log(renderSessionList(listSessions(process.cwd()), activeSession?.id));
-          rl.prompt();
-          return;
-        }
-        const loaded = loadSession(targetId, process.cwd());
-        if (loaded) {
-          activeSession = loaded;
-          messages.length = 0;
-          if (Array.isArray(loaded.messages)) messages.push(...loaded.messages);
-          if (loaded.mode) currentMode = normalizeMode(loaded.mode);
-          console.log(`\n  ${C.green}✓ Conversación reanudada:${C.reset} ${C.bold}${loaded.title}${C.reset} ${C.gray}(${messages.length} mensajes cargados)${C.reset}\n`);
-          rl.setPrompt(getPrompt());
-        } else {
-          console.log(`\n  ${C.granateBright}✖ No se encontró la sesión:${C.reset} ${targetId}\n`);
-        }
         rl.prompt();
         return;
       }
@@ -550,8 +649,10 @@ async function startRepl(initialConfig) {
         console.log(`\n  ${C.granateBright}●${C.reset} ${C.white}Actualizando Deiza Code...${C.reset}`);
         try {
           await runAutoUpdate();
-          console.log(`  ${C.green}✓ Deiza Code actualizado.${C.reset}`);
-          console.log(`  ${C.gray}Reinicia la terminal o ejecuta 'deiza' de nuevo para usar la nueva versión.${C.reset}\n`);
+          console.log(`  ${C.green}✓ Deiza Code actualizado con éxito.${C.reset}`);
+          console.log(`  ${C.cyan}↻ Reiniciando Deiza Code en la nueva versión...${C.reset}\n`);
+          restartSelf();
+          return;
         } catch (err) {
           console.log(Status.error(`Error durante la actualización: ${err.message}`));
         } finally {

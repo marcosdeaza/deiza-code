@@ -101,22 +101,6 @@ function createLiveLine() {
   };
 }
 
-function createSpinner(live, label) {
-  const start = Date.now();
-  let frame = 0;
-  let timer = null;
-  const render = () => {
-    const secs = Math.floor((Date.now() - start) / 1000);
-    live.set(`  ${C.granateBright}${SPIN[frame % SPIN.length]}${C.reset} ${C.gray}${label}${secs >= 2 ? ` · ${secs}s` : ''}${C.reset}`);
-    frame++;
-  };
-  if (isTTY) { render(); timer = setInterval(render, 110); }
-  else process.stdout.write(`  ● ${label}\n`);
-  return {
-    stop() { if (timer) clearInterval(timer); timer = null; live.clear(); },
-  };
-}
-
 function formatBytes(n) {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
@@ -124,9 +108,35 @@ function formatBytes(n) {
 }
 
 function formatDuration(ms) {
-  const s = Math.round(ms / 1000);
+  const s = Math.max(0, Math.round(ms / 1000));
   if (s < 60) return `${s}s`;
-  return `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`;
+  const m = Math.floor(s / 60);
+  const remSec = s % 60;
+  if (m < 60) return `${m}m ${String(remSec).padStart(2, '0')}s`;
+  const h = Math.floor(m / 60);
+  const remMin = m % 60;
+  return `${h}h ${String(remMin).padStart(2, '0')}m ${String(remSec).padStart(2, '0')}s`;
+}
+
+function createSpinner(live, label) {
+  const start = Date.now();
+  let frame = 0;
+  let timer = null;
+  let currentLabel = label;
+  const render = () => {
+    const elapsed = formatDuration(Date.now() - start);
+    const text = typeof currentLabel === 'function' ? currentLabel() : currentLabel;
+    live.set(`  ${C.granateBright}${SPIN[frame % SPIN.length]}${C.reset} ${C.gray}${text}${C.reset} ${C.darkGray}· ${elapsed}${C.reset}`);
+    frame++;
+  };
+  if (isTTY) { render(); timer = setInterval(render, 100); }
+  else process.stdout.write(`  ● ${typeof label === 'function' ? label() : label}\n`);
+  return {
+    setLabel(next) { currentLabel = next; },
+    getElapsed() { return Date.now() - start; },
+    getElapsedText() { return formatDuration(Date.now() - start); },
+    stop() { if (timer) clearInterval(timer); timer = null; live.clear(); },
+  };
 }
 
 const Status = {
@@ -361,6 +371,129 @@ function renderSessionInfo(session) {
   return box(`Métricas de Sesión — ${session.id}`, content, C.granate);
 }
 
+/**
+ * Interactive Arrow-Key Session Selector (Claude Code / TUI style)
+ */
+function selectSessionInteractive(sessions, activeSessionId) {
+  return new Promise((resolve) => {
+    if (!process.stdin.isTTY || !sessions || sessions.length === 0) {
+      return resolve(null);
+    }
+
+    const items = [
+      ...sessions.map((s) => ({
+        type: 'session',
+        id: s.id,
+        title: s.title || 'Conversación sin título',
+        mode: s.mode || 'build',
+        date: s.updatedAt ? new Date(s.updatedAt).toLocaleDateString('es-ES', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
+        msgCount: s.messageCount || (Array.isArray(s.messages) ? s.messages.length : 0),
+        tokens: s.tokens?.total || 0,
+        isActive: s.id === activeSessionId,
+      })),
+      {
+        type: 'new',
+        id: 'new',
+        title: '+ Iniciar nueva conversación limpia',
+        mode: 'build',
+        date: '',
+        msgCount: 0,
+        tokens: 0,
+        isActive: false,
+      },
+    ];
+
+    let selectedIndex = 0;
+    const initialActiveIdx = items.findIndex(it => it.isActive);
+    if (initialActiveIdx >= 0) selectedIndex = initialActiveIdx;
+
+    let renderedLinesCount = 0;
+
+    const render = () => {
+      // Clear previous render cleanly
+      if (renderedLinesCount > 0) {
+        process.stdout.write(`\x1b[${renderedLinesCount}A\x1b[0J`);
+      }
+
+      let out = `\n  ${C.granateBold}┌─ Selector Interactivo de Sesiones ──────────────────────────────────────┐${C.reset}\n`;
+      out += `  ${C.gray}│ Usa las flechas [↑/↓] para navegar, [Enter] para elegir, [Esc] para salir │${C.reset}\n`;
+      out += `  ${C.granateBold}├─────────────────────────────────────────────────────────────────────────┤${C.reset}\n`;
+
+      const visibleSlice = items.slice(0, 10);
+      visibleSlice.forEach((item, idx) => {
+        const isSelected = idx === selectedIndex;
+        const pointer = isSelected ? `${C.roseBold}❯${C.reset}` : ' ';
+        const activeMarker = item.isActive ? ` ${C.green}●${C.reset}` : '  ';
+
+        if (item.type === 'new') {
+          const label = isSelected
+            ? `${C.greenBright}${C.bold}${item.title}${C.reset}`
+            : `${C.gray}${item.title}${C.reset}`;
+          out += `  │  ${pointer}  ${label.padEnd(80)}│\n`;
+        } else {
+          const idColor = isSelected ? `${C.white}${C.bold}` : `${C.gray}`;
+          const badge = modeBadge(item.mode);
+          const rawTitle = item.title.length > 28 ? item.title.slice(0, 26) + '..' : item.title;
+          const titleStr = isSelected ? `${C.white}${C.bold}${rawTitle}${C.reset}` : `${C.white}${rawTitle}${C.reset}`;
+          const tokStr = item.tokens > 0 ? `${C.gold}${(item.tokens / 1000).toFixed(1)}k tok${C.reset}` : `${C.darkGray}0 tok${C.reset}`;
+          const countStr = `${C.gray}${item.msgCount}m${C.reset}`;
+
+          out += `  │  ${pointer}${activeMarker} ${idColor}${item.id}${C.reset}  ${badge}  ${titleStr.padEnd(30)} ${tokStr} · ${countStr}   │\n`;
+        }
+      });
+
+      out += `  ${C.granateBold}└─────────────────────────────────────────────────────────────────────────┘${C.reset}\n`;
+
+      process.stdout.write(out);
+      renderedLinesCount = out.split('\n').length - 1;
+    };
+
+    const wasRaw = process.stdin.isRaw;
+    if (process.stdin.setRawMode) process.stdin.setRawMode(true);
+    process.stdin.resume();
+
+    const onData = (chunk) => {
+      const s = chunk.toString();
+      // Arrow Up (\u001b[A or k)
+      if (s === '\u001b[A' || s === 'k') {
+        selectedIndex = (selectedIndex - 1 + items.length) % items.length;
+        render();
+        return;
+      }
+      // Arrow Down (\u001b[B or j)
+      if (s === '\u001b[B' || s === 'j') {
+        selectedIndex = (selectedIndex + 1) % items.length;
+        render();
+        return;
+      }
+      // Enter
+      if (s === '\r' || s === '\n') {
+        cleanup();
+        const chosen = items[selectedIndex];
+        resolve(chosen);
+        return;
+      }
+      // Escape or Ctrl+C or q
+      if (s === '\u001b' || s === '\u0003' || s === 'q' || s === 'Q') {
+        cleanup();
+        resolve(null);
+        return;
+      }
+    };
+
+    const cleanup = () => {
+      process.stdin.removeListener('data', onData);
+      if (process.stdin.setRawMode) process.stdin.setRawMode(wasRaw || false);
+      if (renderedLinesCount > 0) {
+        process.stdout.write(`\x1b[${renderedLinesCount}A\x1b[0J`);
+      }
+    };
+
+    process.stdin.on('data', onData);
+    render();
+  });
+}
+
 module.exports = {
   C,
   BANNER,
@@ -380,6 +513,7 @@ module.exports = {
   renderWhoami,
   renderSessionList,
   renderSessionInfo,
+  selectSessionInteractive,
 };
 
 
