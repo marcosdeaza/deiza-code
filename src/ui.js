@@ -134,6 +134,8 @@ function highlightMarkdown(text) {
 
 const COMMANDS_REGISTRY = [
   { cmd: '/session', args: '[list|new|resume|delete|info]', desc: 'Gestor de sesiones: listar, crear, reanudar, borrar y métricas de tokens', cat: 'Sesión' },
+  { cmd: '/tokens', args: '', desc: 'Métricas en tiempo real de la ventana de contexto de 1M de tokens', cat: 'Sesión' },
+  { cmd: '/context', args: '', desc: 'Alias de /tokens: ver capacidad disponible y tokens en memoria', cat: 'Sesión' },
   { cmd: '/plan', args: '[query]', desc: 'Modo arquitectura: exploración y blueprint sin editar archivos', cat: 'Modos' },
   { cmd: '/build', args: '[query]', desc: 'Modo implementación: edición quirúrgica, diffs y tests activos', cat: 'Modos' },
   { cmd: '/mode', args: '[plan|build]', desc: 'Alternar entre modo BUILD y PLAN', cat: 'Modos' },
@@ -146,7 +148,8 @@ const COMMANDS_REGISTRY = [
   { cmd: '/whoami', args: '', desc: 'Ver estado de tu cuenta, plan, tokens y cuota activa', cat: 'Cuenta' },
   { cmd: '/usage', args: '', desc: 'Consultar consumo de tokens y ventana rodante de 5 horas', cat: 'Cuenta' },
   { cmd: '/update', args: '', desc: 'Comprobar y actualizar Deiza Code a la última versión', cat: 'Sistema' },
-  { cmd: '/model', args: '[id]', desc: 'Consultar o alternar modelos de IA disponibles', cat: 'Configuración' },
+  { cmd: '/model', args: '[id]', desc: 'Consultar motor oficial (deiza-omniscient · 1M contexto en AWS)', cat: 'Configuración' },
+  { cmd: '/models', args: '', desc: 'Alias de /model: información sobre el motor activo', cat: 'Configuración' },
   { cmd: '/endpoint', args: '[url]', desc: 'Conectar a otro endpoint de IA (Ollama, vLLM, OpenAI)', cat: 'Configuración' },
   { cmd: '/config', args: '', desc: 'Ver o modificar directivas y configuración local', cat: 'Configuración' },
   { cmd: '/init', args: '', desc: 'Inicializar directivas .deizarules en la raíz del repo', cat: 'Proyecto' },

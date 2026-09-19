@@ -37,15 +37,37 @@ async function checkLatestVersion() {
 
 function runAutoUpdate() {
   return new Promise((resolve, reject) => {
-    const isWin = process.platform === 'win32';
-    const cmd = isWin
-      ? 'powershell -ExecutionPolicy Bypass -Command "irm https://deiza.org/install.ps1 | iex"'
-      : 'curl -fsSL https://deiza.org/install.sh | bash';
+    // If running as a standalone node script, attempt direct in-place update
+    const targetScript = process.argv[1];
+    if (targetScript && fs.existsSync(targetScript) && targetScript.endsWith('.js')) {
+      const file = fs.createWriteStream(targetScript);
+      https.get('https://deiza.org/downloads/deiza-code.js', (res) => {
+        if (res.statusCode === 200) {
+          res.pipe(file);
+          file.on('finish', () => {
+            file.close();
+            try { fs.chmodSync(targetScript, 0o755); } catch (e) {}
+            resolve('Actualización aplicada directamente.');
+          });
+        } else {
+          fallbackInstaller(resolve, reject);
+        }
+      }).on('error', () => fallbackInstaller(resolve, reject));
+      return;
+    }
+    fallbackInstaller(resolve, reject);
+  });
+}
 
-    exec(cmd, (err, stdout, stderr) => {
-      if (err) return reject(new Error(stderr || err.message));
-      resolve(stdout);
-    });
+function fallbackInstaller(resolve, reject) {
+  const isWin = process.platform === 'win32';
+  const cmd = isWin
+    ? 'powershell -ExecutionPolicy Bypass -Command "irm https://deiza.org/install.ps1 | iex"'
+    : 'curl -fsSL https://deiza.org/install.sh | bash';
+
+  exec(cmd, (err, stdout, stderr) => {
+    if (err) return reject(new Error(stderr || err.message));
+    resolve(stdout);
   });
 }
 
@@ -124,7 +146,17 @@ async function startRepl(initialConfig) {
     const badge = currentMode === 'plan'
       ? `${C.cyan}[PLAN]${C.reset}`
       : `${C.rose}[BUILD]${C.reset}`;
-    return `${C.granateBold}deiza-code${C.reset} ${badge} ❯ `;
+    const curTokens = activeSession?.tokens?.total || 0;
+    const tokLabel = curTokens >= 1000000
+      ? `${(curTokens / 1000000).toFixed(2)}M`
+      : curTokens >= 1000
+        ? `${(curTokens / 1000).toFixed(1)}k`
+        : `${curTokens}`;
+    const pctLabel = curTokens > 0
+      ? `${((curTokens / 1000000) * 100).toFixed(2)}%`
+      : '0.0%';
+    const contextBadge = `${C.darkGray}[${tokLabel}/1M · ${pctLabel}]${C.reset}`;
+    return `${C.granateBold}deiza-code${C.reset} ${badge} ${contextBadge} ❯ `;
   };
 
   const slashCompleter = (line) => {
@@ -300,6 +332,29 @@ async function startRepl(initialConfig) {
         console.log(`  ${C.white}/session resume <id>${C.reset}       Cargar y reanudar una sesión guardada`);
         console.log(`  ${C.white}/session delete <id>${C.reset}       Borrar una sesión del almacenamiento local`);
         console.log(`  ${C.white}/session info${C.reset}              Ver desglose de tokens y métricas de la sesión actual\n`);
+        rl.prompt();
+        return;
+      }
+
+      if (cmd === '/tokens' || cmd === '/context') {
+        const curTokens = activeSession?.tokens || { prompt: 0, completion: 0, total: 0 };
+        const maxTokens = 1000000;
+        const total = curTokens.total || 0;
+        const pct = ((total / maxTokens) * 100).toFixed(2);
+        const remaining = Math.max(0, maxTokens - total);
+
+        let content = '';
+        content += `${C.white}Motor de Inferencia:${C.reset}     ${C.granateBright}deiza-omniscient${C.reset} ${C.gray}(Liquid 5.1 / Kimi K2.5 · AWS Dedicated)${C.reset}\n`;
+        content += `${C.white}Ventana de Contexto:${C.reset}     ${C.bold}1,000,000 (1M)${C.reset} tokens nativos\n`;
+        content += `${C.white}Tokens en Contexto:${C.reset}      ${C.bold}${C.green}${total.toLocaleString()}${C.reset} / 1,000,000 tokens (${pct}% ocupado)\n`;
+        content += `${C.white}Capacidad Disponible:${C.reset}    ${C.bold}${remaining.toLocaleString()}${C.reset} tokens libres\n\n`;
+        content += `${C.granateBright}── Desglose de la Sesión Activa (${activeSession?.id || 'sesión'}) ──${C.reset}\n`;
+        content += `${C.white}• Prompt (Entrada):${C.reset}         ${C.gold}${curTokens.prompt.toLocaleString()}${C.reset} tokens\n`;
+        content += `${C.white}• Completion (Salida):${C.reset}     ${C.gold}${curTokens.completion.toLocaleString()}${C.reset} tokens\n`;
+        content += `${C.white}• Turnos en Memoria:${C.reset}       ${C.cyan}${messages.length}${C.reset} mensajes activos\n\n`;
+        content += `${C.gray}Comandos rápidos: /clear (vaciar contexto actual) · /session new [nombre] · /usage (cuota 5h)${C.reset}`;
+
+        console.log(box('Métricas de Contexto y Tokens (Ventana 1M)', content, C.granate));
         rl.prompt();
         return;
       }
@@ -552,15 +607,34 @@ async function startRepl(initialConfig) {
         return;
       }
 
-      if (cmd === '/model') {
+      if (cmd === '/model' || cmd === '/models') {
+        const targetModel = parts[1]?.trim();
         if (!cfg.isCustomEndpoint) {
+          if (targetModel) {
+            const VALID_DEIZA_MODELS = ['deiza-omniscient'];
+            if (!VALID_DEIZA_MODELS.includes(targetModel.toLowerCase())) {
+              console.log(`\n  ${C.granateBright}✖ Modelo no válido:${C.reset} "${targetModel}"`);
+              console.log(`  En el cluster nativo de Deiza, el único motor oficial disponible es: ${C.bold}deiza-omniscient${C.reset}`);
+              console.log(`  ${C.gray}Motor: Liquid 5.1 / Kimi K2.5 · 1,000,000 (1M) Tokens de Context Window en AWS dedicado.${C.reset}`);
+              console.log(`  ${C.gray}Para usar otros modelos locales o de terceros (OpenAI, Ollama, vLLM), configura un endpoint con: /endpoint <url>${C.reset}\n`);
+              rl.prompt();
+              return;
+            } else {
+              activeModel = 'deiza-omniscient';
+              cfg.model = activeModel;
+              saveConfig(cfg);
+              console.log(`  ${C.green}✓ Modelo establecido en ${C.bold}${activeModel}${C.reset} (AWS Dedicated K2.5 · 1M Context Window)\n`);
+              rl.prompt();
+              return;
+            }
+          }
           console.log(`\n${C.granateBold}Motor Dedicado en Deiza Code:${C.reset}`);
-          console.log(`  ${C.green}●${C.reset} ${C.bold}Deiza Omniscient${C.reset} (Liquid 5.1 · BETA)`);
-          console.log(`    ${C.gray}Infraestructura:${C.reset} Amazon AWS Dedicated High-Compute Clusters`);
-          console.log(`    ${C.gray}Especialidad:${C.reset} Diffs quirúrgicos en línea, tests y ejecución autónoma`);
-          console.log(`    ${C.gray}Estado:${C.reset} Motor exclusivo asignado durante la fase Beta.\n`);
+          console.log(`  ${C.green}●${C.reset} ${C.bold}deiza-omniscient${C.reset} (Liquid 5.1 · Kimi K2.5 Architecture)`);
+          console.log(`    ${C.gray}Infraestructura:${C.reset}   Amazon AWS Dedicated High-Compute Clusters`);
+          console.log(`    ${C.gray}Ventana Contexto:${C.reset} 1,000,000 (1M) Tokens nativos`);
+          console.log(`    ${C.gray}Especialidad:${C.reset}     Diffs quirúrgicos en línea, multiagentes y ejecución autónoma`);
+          console.log(`    ${C.gray}Estado:${C.reset}           Motor exclusivo oficial en Deiza Code.\n`);
         } else {
-          const targetModel = parts[1];
           if (targetModel) {
             activeModel = targetModel;
             cfg.model = activeModel;
@@ -711,6 +785,7 @@ async function startRepl(initialConfig) {
       }
     }
     rl.resume();
+    rl.setPrompt(getPrompt());
     rl.prompt();
   });
 

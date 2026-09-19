@@ -4,7 +4,7 @@
  * DEIZA CODE — CLI Executable Entry Point
  */
 
-const { BANNER, C, Status, renderSessionList, renderSessionInfo } = require('../src/ui');
+const { BANNER, C, Status, renderSessionList, renderSessionInfo, box } = require('../src/ui');
 const { loadConfig, saveConfig, VERSION } = require('../src/config');
 const { runLoginFlow } = require('../src/auth');
 const { startRepl } = require('../src/index');
@@ -13,6 +13,27 @@ const { listSessions, createSession, loadSession, deleteSession, getLatestSessio
 
 async function main() {
   const args = process.argv.slice(2);
+
+  if (args[0] === 'tokens' || args[0] === 'context') {
+    const ses = getLatestSession(process.cwd());
+    const curTokens = ses?.tokens || { prompt: 0, completion: 0, total: 0 };
+    const maxTokens = 1000000;
+    const total = curTokens.total || 0;
+    const pct = ((total / maxTokens) * 100).toFixed(2);
+    const remaining = Math.max(0, maxTokens - total);
+
+    let content = '';
+    content += `${C.white}Motor de Inferencia:${C.reset}     ${C.granateBright}deiza-omniscient${C.reset} ${C.gray}(Liquid 5.1 / Kimi K2.5 · AWS Dedicated)${C.reset}\n`;
+    content += `${C.white}Ventana de Contexto:${C.reset}     ${C.bold}1,000,000 (1M)${C.reset} tokens nativos\n`;
+    content += `${C.white}Tokens en Contexto:${C.reset}      ${C.bold}${C.green}${total.toLocaleString()}${C.reset} / 1,000,000 tokens (${pct}% ocupado)\n`;
+    content += `${C.white}Capacidad Disponible:${C.reset}    ${C.bold}${remaining.toLocaleString()}${C.reset} tokens libres\n\n`;
+    content += `${C.granateBright}── Desglose de la Sesión (${ses?.id || 'sin sesión activa'}) ──${C.reset}\n`;
+    content += `${C.white}• Prompt (Entrada):${C.reset}         ${C.gold}${curTokens.prompt.toLocaleString()}${C.reset} tokens\n`;
+    content += `${C.white}• Completion (Salida):${C.reset}     ${C.gold}${curTokens.completion.toLocaleString()}${C.reset} tokens\n`;
+
+    console.log(box('Métricas de Contexto y Tokens (Ventana 1M)', content, C.granate));
+    process.exit(0);
+  }
 
   if (args[0] === 'session' || args[0] === 'sessions') {
     const sub = (args[1] || 'list').toLowerCase();
