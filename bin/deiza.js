@@ -4,14 +4,63 @@
  * DEIZA CODE — CLI Executable Entry Point
  */
 
-const { BANNER, C, Status } = require('../src/ui');
+const { BANNER, C, Status, renderSessionList, renderSessionInfo } = require('../src/ui');
 const { loadConfig, saveConfig, VERSION } = require('../src/config');
 const { runLoginFlow } = require('../src/auth');
 const { startRepl } = require('../src/index');
 const { runAgentTurn } = require('../src/agent');
+const { listSessions, createSession, loadSession, deleteSession, getLatestSession } = require('../src/session');
 
 async function main() {
   const args = process.argv.slice(2);
+
+  if (args[0] === 'session' || args[0] === 'sessions') {
+    const sub = (args[1] || 'list').toLowerCase();
+    if (sub === 'list' || sub === 'ls') {
+      const list = listSessions(process.cwd());
+      console.log(renderSessionList(list));
+      process.exit(0);
+    }
+    if (sub === 'new' || sub === 'create') {
+      const title = args.slice(2).join(' ') || null;
+      const ses = createSession(process.cwd(), 'build', title);
+      console.log(`\n  ${C.green}✓ Nueva sesión creada con éxito:${C.reset} ${C.bold}${ses.id}${C.reset}${title ? ` ("${title}")` : ''}\n`);
+      process.exit(0);
+    }
+    if (sub === 'delete' || sub === 'rm' || sub === 'drop') {
+      const targetId = args[2];
+      if (!targetId) {
+        console.log(`\n  ${C.rose}Uso:${C.reset} deiza session delete <id_sesion>\n`);
+        process.exit(1);
+      }
+      const res = deleteSession(targetId, process.cwd());
+      if (res.success) {
+        console.log(`\n  ${C.green}✓ Sesión eliminada:${C.reset} ${res.id}\n`);
+      } else {
+        console.log(`\n  ${C.granateBright}✖ No se encontró la sesión:${C.reset} ${targetId}\n`);
+      }
+      process.exit(0);
+    }
+    if (sub === 'info' || sub === 'stats') {
+      const targetId = args[2];
+      const ses = targetId ? loadSession(targetId, process.cwd()) : getLatestSession(process.cwd());
+      if (ses) {
+        console.log(renderSessionInfo(ses));
+      } else {
+        console.log(`\n  ${C.gray}No hay sesiones en este workspace.${C.reset}\n`);
+      }
+      process.exit(0);
+    }
+    console.log(`
+${C.granateBold}DEIZA CODE — Gestor de Sesiones CLI${C.reset}
+Uso:
+  deiza session list           Lista todas las sesiones del proyecto y tokens
+  deiza session new [nombre]   Crea una sesión nueva en limpio
+  deiza session delete <id>    Elimina una sesión
+  deiza session info [id]      Muestra desglose de tokens y detalles
+`);
+    process.exit(0);
+  }
 
   if (args.includes('--version') || args.includes('-v')) {
     console.log(`deiza-code v${VERSION}`);

@@ -8,13 +8,13 @@ const path = require('path');
 const https = require('https');
 const { exec } = require('child_process');
 const readline = require('readline');
-const { C, BANNER, Status, box, COMMANDS_REGISTRY, renderCommandPalette, renderWhoami, renderSessionList } = require('./ui');
+const { C, BANNER, Status, box, COMMANDS_REGISTRY, renderCommandPalette, renderWhoami, renderSessionList, renderSessionInfo } = require('./ui');
 const { loadConfig, saveConfig, DEFAULT_MODEL, DEFAULT_DEIZA_API, VERSION } = require('./config');
 const { runLoginFlow, fetchModels, fetchUsage, validateApiKey } = require('./auth');
 const { runAgentTurn, streamCompletion } = require('./agent');
 const { Tools } = require('./tools');
 const { getGitContext, detectProjectType } = require('./context');
-const { createSession, saveSession, loadSession, listSessions, getLatestSession, updateSessionTitleFromPrompt } = require('./session');
+const { createSession, saveSession, loadSession, listSessions, getLatestSession, updateSessionTitleFromPrompt, deleteSession, addSessionTokens, findSessionId } = require('./session');
 const { detectImageInText, getClipboardImage } = require('./clipboard');
 
 async function checkLatestVersion() {
@@ -197,17 +197,119 @@ async function startRepl(initialConfig) {
         return;
       }
 
-      if (cmd === '/history' || cmd === '/sessions') {
-        const list = listSessions(process.cwd());
-        console.log(renderSessionList(list, activeSession?.id));
+      if (cmd === '/session' || cmd === '/sessions' || cmd === '/history') {
+        const sub = (parts[1] || 'list').toLowerCase();
+
+        // 1. List sessions
+        if (sub === 'list' || sub === 'ls') {
+          const list = listSessions(process.cwd());
+          console.log(renderSessionList(list, activeSession?.id));
+          rl.prompt();
+          return;
+        }
+
+        // 2. Create new session
+        if (sub === 'new' || sub === 'create') {
+          const title = parts.slice(2).join(' ').trim() || null;
+          activeSession = createSession(process.cwd(), currentMode, title);
+          messages.length = 0;
+          console.log(`\n  ${C.green}✓ Nueva sesión creada e iniciada:${C.reset} ${C.bold}${activeSession.id}${C.reset}${title ? ` ("${title}")` : ''}\n`);
+          rl.setPrompt(getPrompt());
+          rl.prompt();
+          return;
+        }
+
+        // 3. Resume / switch to session
+        if (sub === 'resume' || sub === 'switch' || sub === 'open' || sub === 'load') {
+          const targetId = parts[2];
+          if (!targetId) {
+            const list = listSessions(process.cwd());
+            console.log(renderSessionList(list, activeSession?.id));
+            rl.prompt();
+            return;
+          }
+          const loaded = loadSession(targetId, process.cwd());
+          if (loaded) {
+            activeSession = loaded;
+            messages.length = 0;
+            if (Array.isArray(loaded.messages)) {
+              messages.push(...loaded.messages);
+            }
+            if (loaded.mode) currentMode = loaded.mode;
+            const tokStr = loaded.tokens?.total ? ` · ${C.gold}⚡ ${loaded.tokens.total.toLocaleString()} tokens consumidos${C.reset}` : '';
+            console.log(`\n  ${C.green}✓ Sesión restaurada con éxito:${C.reset} ${C.bold}${loaded.title}${C.reset} ${C.gray}(${messages.length} msgs${tokStr})${C.reset}\n`);
+            rl.setPrompt(getPrompt());
+          } else {
+            console.log(`\n  ${C.granateBright}✖ No se encontró la sesión con ID o coincidencia:${C.reset} ${targetId}\n`);
+          }
+          rl.prompt();
+          return;
+        }
+
+        // 4. Delete session
+        if (sub === 'delete' || sub === 'rm' || sub === 'drop') {
+          const targetId = parts[2];
+          if (!targetId) {
+            console.log(`\n  ${C.rose}Uso:${C.reset} ${C.bold}/session delete <id_de_sesion>${C.reset}`);
+            console.log(`  ${C.gray}Ejemplo: /session delete ses_20260919_7a1b (o parte del ID)${C.reset}\n`);
+            rl.prompt();
+            return;
+          }
+          const delRes = deleteSession(targetId, process.cwd());
+          if (delRes.success) {
+            console.log(`\n  ${C.green}✓ Sesión eliminada del disco:${C.reset} ${delRes.id}`);
+            if (activeSession && activeSession.id === delRes.id) {
+              activeSession = createSession(process.cwd(), currentMode);
+              messages.length = 0;
+              console.log(`  ${C.cyan}● Como era la sesión activa, se ha iniciado una nueva sesión limpia:${C.reset} ${activeSession.id}\n`);
+            } else {
+              console.log('');
+            }
+          } else {
+            console.log(`\n  ${C.granateBright}✖ No se encontró la sesión para borrar:${C.reset} ${targetId}\n`);
+          }
+          rl.prompt();
+          return;
+        }
+
+        // 5. Session Info & Tokens
+        if (sub === 'info' || sub === 'stats' || sub === 'tokens' || sub === 'token') {
+          console.log(renderSessionInfo(activeSession));
+          rl.prompt();
+          return;
+        }
+
+        // Direct /session <id> shortcut
+        const trySession = loadSession(parts[1], process.cwd());
+        if (trySession) {
+          activeSession = trySession;
+          messages.length = 0;
+          if (Array.isArray(trySession.messages)) {
+            messages.push(...trySession.messages);
+          }
+          if (trySession.mode) currentMode = trySession.mode;
+          console.log(`\n  ${C.green}✓ Sesión reanudada:${C.reset} ${C.bold}${trySession.title}${C.reset} ${C.gray}(${messages.length} msgs)${C.reset}\n`);
+          rl.setPrompt(getPrompt());
+          rl.prompt();
+          return;
+        }
+
+        console.log(`\n${C.granateBold}Gestor de Sesiones (/session):${C.reset}`);
+        console.log(`  ${C.white}/session list${C.reset}              Ver todas las sesiones y consumo de tokens`);
+        console.log(`  ${C.white}/session new [nombre]${C.reset}      Crear e iniciar una nueva sesión en limpio`);
+        console.log(`  ${C.white}/session resume <id>${C.reset}       Cargar y reanudar una sesión guardada`);
+        console.log(`  ${C.white}/session delete <id>${C.reset}       Borrar una sesión del almacenamiento local`);
+        console.log(`  ${C.white}/session info${C.reset}              Ver desglose de tokens y métricas de la sesión actual\n`);
         rl.prompt();
         return;
       }
 
       if (cmd === '/new') {
-        activeSession = createSession(process.cwd(), currentMode);
+        const title = parts.slice(1).join(' ').trim() || null;
+        activeSession = createSession(process.cwd(), currentMode, title);
         messages.length = 0;
-        console.log(`\n  ${C.green}✓ Nueva conversación iniciada en limpio:${C.reset} ${C.bold}${activeSession.id}${C.reset}\n`);
+        console.log(`\n  ${C.green}✓ Nueva conversación iniciada en limpio:${C.reset} ${C.bold}${activeSession.id}${C.reset}${title ? ` ("${title}")` : ''}\n`);
+        rl.setPrompt(getPrompt());
         rl.prompt();
         return;
       }
@@ -228,7 +330,8 @@ async function startRepl(initialConfig) {
             messages.push(...loaded.messages);
           }
           if (loaded.mode) currentMode = loaded.mode;
-          console.log(`\n  ${C.green}✓ Conversación reanudada:${C.reset} ${C.bold}${loaded.title}${C.reset} ${C.gray}(${messages.length} mensajes cargados)${C.reset}\n`);
+          const tokStr = loaded.tokens?.total ? ` · ${C.gold}⚡ ${loaded.tokens.total.toLocaleString()} tokens${C.reset}` : '';
+          console.log(`\n  ${C.green}✓ Conversación reanudada:${C.reset} ${C.bold}${loaded.title}${C.reset} ${C.gray}(${messages.length} mensajes cargados${tokStr})${C.reset}\n`);
           rl.setPrompt(getPrompt());
         } else {
           console.log(`\n  ${C.granateBright}✖ No se encontró la sesión:${C.reset} ${targetId}\n`);
@@ -257,7 +360,7 @@ async function startRepl(initialConfig) {
             data_url: clip.dataUrl,
             size_bytes: fs.existsSync(clip.imagePath) ? fs.statSync(clip.imagePath).size : 0,
           };
-          await runAgentTurn({
+          const turnResult = await runAgentTurn({
             cfg,
             messages,
             userInput: promptAfter,
@@ -269,7 +372,11 @@ async function startRepl(initialConfig) {
           updateSessionTitleFromPrompt(activeSession, promptAfter);
           activeSession.messages = messages;
           activeSession.mode = currentMode;
-          saveSession(activeSession);
+          if (turnResult?.usage) {
+            addSessionTokens(activeSession, turnResult.usage);
+          } else {
+            saveSession(activeSession);
+          }
         } catch (err) {
           console.log(Status.error(err.message));
         }
@@ -419,7 +526,7 @@ async function startRepl(initialConfig) {
 
         rl.pause();
         try {
-          await runAgentTurn({
+          const turnResult = await runAgentTurn({
             cfg,
             messages,
             userInput: promptAfterImage,
@@ -431,7 +538,11 @@ async function startRepl(initialConfig) {
           updateSessionTitleFromPrompt(activeSession, promptAfterImage);
           activeSession.messages = messages;
           activeSession.mode = currentMode;
-          saveSession(activeSession);
+          if (turnResult?.usage) {
+            addSessionTokens(activeSession, turnResult.usage);
+          } else {
+            saveSession(activeSession);
+          }
         } catch (err) {
           console.log(Status.error(err.message));
         }
@@ -573,7 +684,7 @@ async function startRepl(initialConfig) {
     // Process user coding instruction
     rl.pause();
     try {
-      await runAgentTurn({
+      const turnResult = await runAgentTurn({
         cfg,
         messages,
         userInput: effectiveInput,
@@ -585,7 +696,11 @@ async function startRepl(initialConfig) {
       updateSessionTitleFromPrompt(activeSession, effectiveInput);
       activeSession.messages = messages;
       activeSession.mode = currentMode;
-      saveSession(activeSession);
+      if (turnResult?.usage) {
+        addSessionTokens(activeSession, turnResult.usage);
+      } else {
+        saveSession(activeSession);
+      }
     } catch (err) {
       if (err.message === 'AUTH_EXPIRED') {
         console.log(Status.error('Tu sesión ha expirado o la clave es inválida. Ejecuta /login para reconectar.'));

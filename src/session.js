@@ -36,17 +36,31 @@ function generateSessionId() {
 }
 
 /**
+ * Quick token estimator for fallback when backend doesn't send usage header
+ */
+function estimateTokens(text) {
+  if (!text) return 0;
+  if (typeof text !== 'string') text = JSON.stringify(text);
+  return Math.max(1, Math.ceil(text.length / 3.8));
+}
+
+/**
  * Creates a new session object
  */
-function createSession(cwd = process.cwd(), mode = 'build') {
+function createSession(cwd = process.cwd(), mode = 'build', customTitle = null) {
   const id = generateSessionId();
   const session = {
     id,
-    title: 'Nueva conversación',
+    title: customTitle || 'Nueva conversación',
     cwd: path.resolve(cwd),
     mode,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
+    tokens: {
+      prompt: 0,
+      completion: 0,
+      total: 0,
+    },
     messages: [],
   };
   saveSession(session);
@@ -62,6 +76,9 @@ function saveSession(session) {
     const dir = getWorkspaceSessionsDir(session.cwd || process.cwd());
     const filePath = path.join(dir, `${session.id}.json`);
     session.updatedAt = new Date().toISOString();
+    if (!session.tokens) {
+      session.tokens = { prompt: 0, completion: 0, total: 0 };
+    }
     fs.writeFileSync(filePath, JSON.stringify(session, null, 2), 'utf8');
   } catch (err) {
     // Fail silently without crashing CLI
@@ -69,18 +86,61 @@ function saveSession(session) {
 }
 
 /**
- * Loads a specific session by ID for a workspace
+ * Resolves full or partial session ID
  */
-function loadSession(sessionId, cwd = process.cwd()) {
+function findSessionId(query, cwd = process.cwd()) {
+  if (!query) return null;
+  const clean = query.trim();
+  const dir = getWorkspaceSessionsDir(cwd);
+  if (!fs.existsSync(dir)) return null;
+  const files = fs.readdirSync(dir).filter(f => f.endsWith('.json'));
+
+  // 1. Exact match
+  if (files.includes(`${clean}.json`)) return clean;
+
+  // 2. Partial ID or title match
+  const match = files.find(f => {
+    const id = f.replace('.json', '');
+    return id.includes(clean) || id.endsWith(clean);
+  });
+  return match ? match.replace('.json', '') : null;
+}
+
+/**
+ * Loads a specific session by ID or partial query for a workspace
+ */
+function loadSession(sessionIdOrQuery, cwd = process.cwd()) {
   try {
+    const resolvedId = findSessionId(sessionIdOrQuery, cwd) || sessionIdOrQuery;
     const dir = getWorkspaceSessionsDir(cwd);
-    const filePath = path.join(dir, `${sessionId}.json`);
+    const filePath = path.join(dir, `${resolvedId}.json`);
     if (fs.existsSync(filePath)) {
-      const data = fs.readFileSync(filePath, 'utf8');
-      return JSON.parse(data);
+      const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+      if (!data.tokens) {
+        data.tokens = { prompt: 0, completion: 0, total: 0 };
+      }
+      return data;
     }
   } catch (err) {}
   return null;
+}
+
+/**
+ * Adds token consumption to a session
+ */
+function addSessionTokens(session, usage = {}) {
+  if (!session) return;
+  if (!session.tokens) {
+    session.tokens = { prompt: 0, completion: 0, total: 0 };
+  }
+  const p = Number(usage.promptTokens || usage.prompt_tokens || 0);
+  const c = Number(usage.completionTokens || usage.completion_tokens || 0);
+  const t = Number(usage.totalTokens || usage.total_tokens || (p + c));
+
+  session.tokens.prompt = (session.tokens.prompt || 0) + p;
+  session.tokens.completion = (session.tokens.completion || 0) + c;
+  session.tokens.total = (session.tokens.total || 0) + t;
+  saveSession(session);
 }
 
 /**
@@ -104,6 +164,7 @@ function listSessions(cwd = process.cwd()) {
           updatedAt: data.updatedAt,
           mode: data.mode || 'build',
           messageCount: Array.isArray(data.messages) ? data.messages.length : 0,
+          tokens: data.tokens || { prompt: 0, completion: 0, total: 0 },
         });
       } catch (e) {}
     }
@@ -142,16 +203,17 @@ function updateSessionTitleFromPrompt(session, promptText) {
 /**
  * Deletes a session file
  */
-function deleteSession(sessionId, cwd = process.cwd()) {
+function deleteSession(sessionIdOrQuery, cwd = process.cwd()) {
   try {
+    const resolvedId = findSessionId(sessionIdOrQuery, cwd) || sessionIdOrQuery;
     const dir = getWorkspaceSessionsDir(cwd);
-    const filePath = path.join(dir, `${sessionId}.json`);
+    const filePath = path.join(dir, `${resolvedId}.json`);
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
-      return true;
+      return { success: true, id: resolvedId };
     }
   } catch (err) {}
-  return false;
+  return { success: false, id: sessionIdOrQuery };
 }
 
 module.exports = {
@@ -162,5 +224,8 @@ module.exports = {
   getLatestSession,
   updateSessionTitleFromPrompt,
   deleteSession,
+  addSessionTokens,
+  estimateTokens,
+  findSessionId,
   getWorkspaceHash,
 };

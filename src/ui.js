@@ -133,12 +133,13 @@ function highlightMarkdown(text) {
 }
 
 const COMMANDS_REGISTRY = [
+  { cmd: '/session', args: '[list|new|resume|delete|info]', desc: 'Gestor de sesiones: listar, crear, reanudar, borrar y métricas de tokens', cat: 'Sesión' },
   { cmd: '/plan', args: '[query]', desc: 'Modo arquitectura: exploración y blueprint sin editar archivos', cat: 'Modos' },
   { cmd: '/build', args: '[query]', desc: 'Modo implementación: edición quirúrgica, diffs y tests activos', cat: 'Modos' },
   { cmd: '/mode', args: '[plan|build]', desc: 'Alternar entre modo BUILD y PLAN', cat: 'Modos' },
-  { cmd: '/history', args: '', desc: 'Ver historial de conversaciones guardadas en este proyecto', cat: 'Conversaciones' },
+  { cmd: '/history', args: '', desc: 'Ver historial de conversaciones y consumo de tokens', cat: 'Conversaciones' },
   { cmd: '/resume', args: '[id]', desc: 'Continuar una conversación anterior guardada con todo su contexto', cat: 'Conversaciones' },
-  { cmd: '/new', args: '', desc: 'Iniciar una nueva conversación limpia en este workspace', cat: 'Conversaciones' },
+  { cmd: '/new', args: '[título]', desc: 'Iniciar una nueva conversación limpia en este workspace', cat: 'Conversaciones' },
   { cmd: '/paste', args: '', desc: 'Pegar captura del portapapeles del SO (Win+Shift+S / PrtScn / Cmd+Shift+4)', cat: 'Herramientas' },
   { cmd: '/image', args: '<ruta> [inst]', desc: 'Analizar capturas o maquetas con visión multimodal AWS', cat: 'Herramientas' },
   { cmd: '/agent', args: '<rol> <tarea>', desc: 'Lanzar un subagente worker aislado (ej: Auditor, Tester)', cat: 'Agentes' },
@@ -211,21 +212,57 @@ function renderWhoami({ email, plan, apiKey, apiBase, usage, currentMode }) {
 
 function renderSessionList(sessions, activeSessionId) {
   if (!sessions || sessions.length === 0) {
-    return `\n  ${C.gray}No hay conversaciones guardadas en este workspace. Usa ${C.white}/new${C.gray} para iniciar.${C.reset}\n`;
+    return `\n  ${C.gray}No hay conversaciones guardadas en este workspace. Usa ${C.white}/session new${C.gray} para iniciar una limpia.${C.reset}\n`;
   }
 
-  let content = `  ${C.darkGray}Conversaciones guardadas en este workspace (usa ${C.white}/resume <id>${C.darkGray} para continuar):${C.reset}\n\n`;
+  let totalTokensAll = 0;
+  let content = `  ${C.darkGray}Sesiones en este workspace (usa ${C.white}/session resume <id>${C.darkGray} para continuar o ${C.white}/session delete <id>${C.darkGray} para borrar):${C.reset}\n\n`;
+
   for (const s of sessions) {
     const isActive = s.id === activeSessionId;
     const bullet = isActive ? `${C.green}● [ACTIVA]${C.reset}` : `${C.gray}○${C.reset}`;
-    const modeBadge = s.mode === 'plan' ? `${C.cyan}[PLAN]${C.reset}` : `${C.rose}[BUILD]${C.reset}`;
+    const modeBadge = s.mode === 'plan' ? `${C.cyan}[PLAN]` : `${C.rose}[BUILD]`;
     const dateStr = s.updatedAt ? new Date(s.updatedAt).toLocaleString('es-ES', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
-    const title = s.title.length > 36 ? s.title.slice(0, 34) + '..' : s.title;
+    const title = s.title.length > 32 ? s.title.slice(0, 30) + '..' : s.title;
+    const tokens = s.tokens || { total: 0 };
+    totalTokensAll += (tokens.total || 0);
 
-    content += `  ${bullet} ${C.bold}${C.white}${s.id}${C.reset}  ${modeBadge}  ${C.gray}${dateStr}${C.reset}  ${C.white}${title}${C.reset}  ${C.darkGray}(${s.messageCount} msgs)${C.reset}\n`;
+    const tokenStr = tokens.total > 0
+      ? `${C.gold}⚡ ${tokens.total.toLocaleString()} tok${C.reset}`
+      : `${C.darkGray}0 tok${C.reset}`;
+
+    content += `  ${bullet} ${C.bold}${C.white}${s.id}${C.reset}  ${modeBadge}${C.reset}  ${C.gray}${dateStr}${C.reset}  ${C.white}${title}${C.reset}  ${tokenStr}  ${C.darkGray}(${s.messageCount} msgs)${C.reset}\n`;
   }
 
-  return box('Historial de Sesiones — Workspace Local', content, C.granate);
+  content += `\n  ${C.darkGray}───────────────────────────────────────────────────────────────────${C.reset}\n`;
+  content += `  ${C.white}Total acumulado en este workspace:${C.reset} ${C.bold}${C.green}${totalTokensAll.toLocaleString()}${C.reset} ${C.white}tokens consumidos across ${sessions.length} sesiones.${C.reset}\n`;
+  content += `  ${C.gray}Comandos rápidos: /session new [nombre] · /session resume <id> · /session delete <id> · /session info${C.reset}`;
+
+  return box('Historial de Sesiones y Consumo de Tokens', content, C.granate);
+}
+
+function renderSessionInfo(session) {
+  if (!session) return `\n  ${C.gray}No hay información de sesión activa.${C.reset}\n`;
+  const tokens = session.tokens || { prompt: 0, completion: 0, total: 0 };
+  const modeBadge = session.mode === 'plan' ? `${C.cyan}[PLAN] (Arquitectura segura)` : `${C.rose}[BUILD] (Edición quirúrgica y tests)`;
+  const created = session.createdAt ? new Date(session.createdAt).toLocaleString('es-ES') : '-';
+  const updated = session.updatedAt ? new Date(session.updatedAt).toLocaleString('es-ES') : '-';
+  const msgCount = Array.isArray(session.messages) ? session.messages.length : 0;
+
+  let content = '';
+  content += `${C.white}ID de Sesión:${C.reset}         ${C.bold}${C.rose}${session.id}${C.reset}\n`;
+  content += `${C.white}Título / Asunto:${C.reset}      ${C.bold}${session.title || 'Nueva conversación'}${C.reset}\n`;
+  content += `${C.white}Modo de Trabajo:${C.reset}      ${modeBadge}${C.reset}\n`;
+  content += `${C.white}Ruta Workspace:${C.reset}       ${C.gray}${session.cwd || process.cwd()}${C.reset}\n`;
+  content += `${C.white}Mensajes Guardados:${C.reset}   ${C.bold}${msgCount}${C.reset} mensajes\n`;
+  content += `${C.white}Inicio de Conversación:${C.reset}${C.gray} ${created}${C.reset}\n`;
+  content += `${C.white}Última Actualización:${C.reset}  ${C.gray}${updated}${C.reset}\n\n`;
+  content += `${C.granateBright}── Métricas de Consumo de Tokens (Esta Sesión) ──${C.reset}\n`;
+  content += `${C.white}Tokens de Entrada (Prompt):${C.reset}      ${C.bold}${tokens.prompt.toLocaleString()}${C.reset}\n`;
+  content += `${C.white}Tokens de Salida (Completion):${C.reset}  ${C.bold}${tokens.completion.toLocaleString()}${C.reset}\n`;
+  content += `${C.white}Total Tokens Sesión:${C.reset}            ${C.bold}${C.green}${tokens.total.toLocaleString()}${C.reset} tokens consumidos\n`;
+
+  return box(`Métricas de Sesión — ${session.id}`, content, C.granate);
 }
 
 module.exports = {
@@ -239,5 +276,7 @@ module.exports = {
   renderCommandPalette,
   renderWhoami,
   renderSessionList,
+  renderSessionInfo,
 };
+
 

@@ -108,6 +108,7 @@ async function streamCompletion({ apiBase, apiKey, model, messages, onChunk }) {
               try {
                 const parsed = JSON.parse(dataStr);
                 const delta = parsed.choices?.[0]?.delta?.content || parsed.delta || parsed.text || '';
+                if (parsed.usage) usage = parsed.usage;
                 if (delta) {
                   fullText += delta;
                   if (onChunk) onChunk(delta);
@@ -122,6 +123,7 @@ async function streamCompletion({ apiBase, apiKey, model, messages, onChunk }) {
               try {
                 const parsed = JSON.parse(trimmed);
                 const delta = parsed.delta || parsed.text || '';
+                if (parsed.usage) usage = parsed.usage;
                 if (delta) {
                   fullText += delta;
                   if (onChunk) onChunk(delta);
@@ -135,7 +137,10 @@ async function streamCompletion({ apiBase, apiKey, model, messages, onChunk }) {
         });
 
         res.on('end', () => {
-          resolve(fullText);
+          const ret = new String(fullText);
+          ret.text = fullText;
+          ret.usage = usage;
+          resolve(ret);
         });
       }
     );
@@ -178,13 +183,19 @@ async function runAgentTurn({ cfg, messages, userInput, rl, confirmCallback, mod
 
   let turn = 0;
   let totalToolsExecuted = 0;
+  let totalPromptTokens = 0;
+  let totalCompletionTokens = 0;
   const MAX_TURNS = 12;
 
   while (turn < MAX_TURNS) {
     turn++;
     let hasStreamed = false;
 
-    const assistantText = await streamCompletion({
+    // Estimate input tokens from current messages length as baseline
+    const promptLen = JSON.stringify(messages).length;
+    const estPromptTok = Math.max(1, Math.ceil(promptLen / 3.8));
+
+    const assistantResult = await streamCompletion({
       apiBase: cfg.apiBase,
       apiKey: cfg.apiKey,
       model: cfg.model,
@@ -199,44 +210,56 @@ async function runAgentTurn({ cfg, messages, userInput, rl, confirmCallback, mod
       },
     });
 
-    process.stdout.write('\n');
+    const assistantText = assistantResult?.text || assistantResult?.toString() || '';
+    const chunkUsage = assistantResult?.usage;
+
+    totalPromptTokens += Number(chunkUsage?.prompt_tokens || estPromptTok);
+    totalCompletionTokens += Number(chunkUsage?.completion_tokens || Math.max(1, Math.ceil(assistantText.length / 3.8)));
+
+    if (hasStreamed) {
+      process.stdout.write('\n');
+    }
+
+    // Append raw assistant response to conversation history
     messages.push({ role: 'assistant', content: assistantText });
 
+    // Parse any tool calls
     const toolCalls = extractToolCalls(assistantText);
     if (toolCalls.length === 0) {
-      // Only show success checkmark when tools/actions were executed
-      if (totalToolsExecuted > 0) {
-        console.log(Status.success);
-      }
+      // Agent finished its thought process without needing more tools
+      console.log(Status.success);
       break;
     }
 
-    // Process and execute tool calls
+    // Execute tool calls sequentially
     for (const call of toolCalls) {
       const fn = Tools[call.name];
       if (!fn) {
         messages.push({
           role: 'user',
-          content: `<tool_response name="${call.name}">Error: Unknown tool "${call.name}"</tool_response>`,
+          content: `<tool_response name="${call.name}">Error: Herramienta '${call.name}' no reconocida.</tool_response>`,
         });
         continue;
       }
 
-      // Safety enforcement in PLAN mode: forbid file mutations
-      if (mode === 'plan' && (call.name === 'write_file' || call.name === 'edit_file')) {
-        console.log(`  ${C.rose}⚠️  [PLAN MODE] Modificación bloqueada para ${call.args.path}.${C.reset}`);
-        messages.push({
-          role: 'user',
-          content: `<tool_response name="${call.name}">[MODO PLAN ACTIVO] La herramienta "${call.name}" está deshabilitada en modo PLAN. Formula tu plan de arquitectura o solicita cambiar a modo BUILD (/build) para escribir cambios.</tool_response>`,
-        });
-        continue;
+      // Check mode permissions: PLAN mode cannot write, edit, or run bash
+      if (mode === 'plan') {
+        const mutatingTools = ['edit_file', 'write_file', 'run_command'];
+        if (mutatingTools.includes(call.name)) {
+          console.log(`  ${C.cyan}🔒 [PLAN MODE]${C.reset} ${C.gray}Simulando acción ${call.name} sin modificar el disco...${C.reset}`);
+          messages.push({
+            role: 'user',
+            content: `<tool_response name="${call.name}">[PLAN MODE SIMULATION] La acción ${call.name} fue interceptada en modo PLAN. Planifica la arquitectura sin modificar archivos.</tool_response>`,
+          });
+          continue;
+        }
       }
 
-      // Live status display
+      // User safety confirmation for bash execution
       if (call.name === 'run_command') {
-        const cmd = call.args.command;
+        const cmd = call.args.command || '';
         if (isCommandRisky(cmd) && confirmCallback) {
-          const approved = await confirmCallback(`¿Ejecutar comando riesgoso "${cmd}"? [s/N]: `);
+          const approved = await confirmCallback(`¿Autorizas ejecutar este comando bash? -> ${C.gold}${cmd}${C.reset} [S/n]: `);
           if (!approved) {
             messages.push({
               role: 'user',
@@ -274,6 +297,16 @@ async function runAgentTurn({ cfg, messages, userInput, rl, confirmCallback, mod
   }
 
   console.log(`${C.granateDark}─────────────────────────────────────────────────────────────${C.reset}\n`);
+
+  return {
+    turnCount: turn,
+    toolsExecuted: totalToolsExecuted,
+    usage: {
+      promptTokens: totalPromptTokens,
+      completionTokens: totalCompletionTokens,
+      totalTokens: totalPromptTokens + totalCompletionTokens,
+    },
+  };
 }
 
 module.exports = {
