@@ -7,29 +7,33 @@ const { VERSION, IS_CLOSED } = require('./config');
 
 const C = {
   reset: '\x1b[0m',
-  bold: '\x1b[1m',
-  dim: '\x1b[2m',
+  bold: '\x1b[1;97m',
+  dim: '\x1b[38;5;244m',
   italic: '\x1b[3m',
   underline: '\x1b[4m',
 
-  // Granate / Crimson
-  granate: '\x1b[38;2;140;47;57m',
-  granateBold: '\x1b[1m\x1b[38;2;140;47;57m',
-  granateBright: '\x1b[38;2;184;74;85m',
-  granateDark: '\x1b[38;2;94;31;38m',
-  granateBg: '\x1b[48;2;140;47;57m\x1b[37m',
+  // Granate / Crimson (Vibrant & High Contrast)
+  granate: '\x1b[38;5;168m',
+  granateBold: '\x1b[1;38;5;197m',
+  granateBright: '\x1b[1;38;5;204m',
+  granateDark: '\x1b[38;5;240m',
+  granateBg: '\x1b[48;5;197m\x1b[1;97m',
 
-  // Accents
-  rose: '\x1b[38;2;225;112;128m',
-  gold: '\x1b[38;2;230;180;80m',
-  green: '\x1b[38;2;60;180;110m',
-  greenBright: '\x1b[38;2;80;220;130m',
-  blue: '\x1b[38;2;90;150;220m',
-  cyan: '\x1b[38;2;100;200;220m',
-  red: '\x1b[38;2;230;70;70m',
-  gray: '\x1b[38;2;130;130;140m',
-  darkGray: '\x1b[38;2;75;75;85m',
-  white: '\x1b[38;2;245;245;250m',
+  // High-Contrast Accents
+  rose: '\x1b[1;38;5;211m',
+  roseBold: '\x1b[1;38;5;211m',
+  gold: '\x1b[1;38;5;214m',
+  green: '\x1b[1;38;5;114m',
+  greenBright: '\x1b[1;38;5;84m',
+  blue: '\x1b[1;38;5;75m',
+  cyan: '\x1b[1;38;5;81m',
+  red: '\x1b[1;38;5;203m',
+  gray: '\x1b[38;5;248m',
+  darkGray: '\x1b[38;5;244m',
+  guide: '\x1b[38;5;240m',
+  white: '\x1b[38;5;254m',
+  brightWhite: '\x1b[1;97m',
+  codeBg: '\x1b[48;5;236m\x1b[38;5;81m',
 };
 
 const BANNER = `
@@ -43,18 +47,18 @@ ${C.granateBold}  ██████╗  ███████╗ ██╗ █�
 `;
 
 const MODE_INFO = {
-  build: { label: 'BUILD', color: C.rose, desc: 'Autónomo: edita, ejecuta y verifica sin pedir permiso.' },
-  copilot: { label: 'COPILOT', color: C.gold, desc: 'Supervisado: cada cambio y comando se muestra y se aprueba.' },
-  plan: { label: 'PLAN', color: C.cyan, desc: 'Solo lectura: analiza y propone un plan sin tocar archivos.' },
+  build: { label: 'BUILD', color: C.rose, badge: `${C.rose}[BUILD]${C.reset}`, desc: 'Autónomo: edita, ejecuta y verifica sin pedir permiso.' },
+  copilot: { label: 'COPILOT', color: C.gold, badge: `${C.gold}[COPILOT]${C.reset}`, desc: 'Supervisado: cada cambio y comando se muestra y se aprueba.' },
+  plan: { label: 'PLAN', color: C.cyan, badge: `${C.cyan}[PLAN]${C.reset}`, desc: 'Solo lectura: analiza y propone un plan sin tocar archivos.' },
 };
 
 function modeBadge(mode) {
   const info = MODE_INFO[mode] || MODE_INFO.build;
-  return `${info.color}[${info.label}]${C.reset}`;
+  return info.badge;
 }
 
 function renderModes(current) {
-  let out = `\n${C.granateBold}Modos de permisos de Deiza Code:${C.reset}\n`;
+  let out = `\n  ${C.granateBold}Modos de permisos de Deiza Code:${C.reset}\n`;
   for (const key of ['build', 'copilot', 'plan']) {
     const info = MODE_INFO[key];
     const mark = key === current ? `${C.green}●${C.reset}` : `${C.darkGray}○${C.reset}`;
@@ -155,7 +159,7 @@ const Status = {
   subagent: (role, task) => `  ${C.rose}› [agent:${role}]${C.reset} ${C.white}${task}${C.reset}`,
   vision: (file) => `  ${C.cyan}› [image]${C.reset} ${C.white}${file}${C.reset}`,
   success: `  ${C.green}✓${C.reset} ${C.white}Completado con éxito${C.reset}`,
-  error: (msg) => `  ${C.granateBright}✖ Error:${C.reset} ${msg}`,
+  error: (msg) => `  ${C.red}✖ Error:${C.reset} ${C.white}${msg}${C.reset}`,
 };
 
 /**
@@ -165,8 +169,7 @@ function renderDiff(filePath, oldContent, newContent) {
   const oldLines = oldContent ? oldContent.split('\n') : [];
   const newLines = newContent ? newContent.split('\n') : [];
 
-  let out = `\n  ${C.bold}Diff:${C.reset} ${C.white}${filePath}${C.reset}\n`;
-  out += `  ${C.darkGray}──────────────────────────────────────────────────${C.reset}\n`;
+  let out = `\n  ${C.guide}╭─ ${C.blue}~ [diff]${C.reset} ${C.white}${filePath}${C.reset}\n`;
 
   // Find range of differences
   let start = 0;
@@ -187,53 +190,162 @@ function renderDiff(filePath, oldContent, newContent) {
 
   // Context before
   for (let i = contextBefore; i < start; i++) {
-    out += `  ${C.darkGray}${String(i + 1).padStart(4)} │${C.reset}   ${oldLines[i]}\n`;
+    out += `  ${C.guide}│${C.reset}   ${C.darkGray}${String(i + 1).padStart(4)} │${C.reset}   ${oldLines[i]}\n`;
   }
 
   // Deletions
   for (let i = start; i <= oldEnd; i++) {
-    out += `  ${C.red}${String(i + 1).padStart(4)} - │ - ${oldLines[i]}${C.reset}\n`;
+    out += `  ${C.guide}│${C.reset}   ${C.red}${String(i + 1).padStart(4)} - │ - ${oldLines[i]}${C.reset}\n`;
   }
 
   // Additions
   for (let i = start; i <= newEnd; i++) {
-    out += `  ${C.green}${String(i + 1).padStart(4)} + │ + ${newLines[i]}${C.reset}\n`;
+    out += `  ${C.guide}│${C.reset}   ${C.green}${String(i + 1).padStart(4)} + │ + ${newLines[i]}${C.reset}\n`;
   }
 
   // Context after
   for (let i = oldEnd + 1; i < contextAfterOld; i++) {
-    out += `  ${C.darkGray}${String(i + 1).padStart(4)} │${C.reset}   ${oldLines[i]}\n`;
+    out += `  ${C.guide}│${C.reset}   ${C.darkGray}${String(i + 1).padStart(4)} │${C.reset}   ${oldLines[i]}\n`;
   }
 
-  out += `  ${C.darkGray}──────────────────────────────────────────────────${C.reset}\n`;
+  out += `  ${C.guide}╰──────────────────────────────────────────────────${C.reset}\n`;
   return out;
 }
 
 /**
- * Boxen-like bordered message
+ * Boxen-like bordered message with modern rounded corners
  */
-function box(title, content, color = C.granate) {
+function box(title, content, color = C.granateBold) {
   const lines = content.split('\n');
   const maxLen = Math.max(title.length + 4, ...lines.map(l => l.replace(/\x1b\[[0-9;]*m/g, '').length));
   const border = '─'.repeat(maxLen + 2);
 
-  let out = `\n  ${color}┌─ ${C.bold}${title}${C.reset}${color} ${'─'.repeat(Math.max(0, maxLen - title.length - 1))}┐${C.reset}\n`;
+  let out = `\n  ${color}╭─ ${C.brightWhite}${title}${C.reset}${color} ${'─'.repeat(Math.max(0, maxLen - title.length - 1))}╮${C.reset}\n`;
   for (const line of lines) {
     const rawLen = line.replace(/\x1b\[[0-9;]*m/g, '').length;
     const padding = ' '.repeat(Math.max(0, maxLen - rawLen));
     out += `  ${color}│${C.reset} ${line}${padding} ${color}│${C.reset}\n`;
   }
-  out += `  ${color}└${border}┘${C.reset}\n`;
+  out += `  ${color}╰${border}╯${C.reset}\n`;
   return out;
 }
 
 /**
- * Simple syntax highlighting for streamed code blocks in terminal
+ * Simple syntax highlighting for static markdown snippets
  */
 function highlightMarkdown(text) {
   return text
-    .replace(/`([^`]+)`/g, `${C.gold}$1${C.reset}`)
-    .replace(/\*\*([^*]+)\*\*/g, `${C.bold}$1${C.reset}`);
+    .replace(/`([^`]+)`/g, `${C.cyan}$1${C.reset}`)
+    .replace(/\*\*([^*]+)\*\*/g, `${C.brightWhite}$1${C.reset}`)
+    .replace(/__([^_]+)__/g, `${C.brightWhite}$1${C.reset}`);
+}
+
+/**
+ * Live line-based streaming markdown renderer for terminal display.
+ * Transforms bold, inline code, headers, code blocks, lists, and quotes into high-contrast ANSI.
+ */
+function createMarkdownStream(onWrite) {
+  let inCodeBlock = false;
+  let codeLang = '';
+  let buffer = '';
+
+  function renderLine(line) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('```')) {
+      inCodeBlock = !inCodeBlock;
+      if (inCodeBlock) {
+        codeLang = trimmed.slice(3).trim();
+        return `  ${C.guide}╭─ ${C.gold}${codeLang || 'code'}${C.reset} ${C.guide}${'─'.repeat(Math.max(16, 54 - (codeLang ? codeLang.length + 5 : 4)))}╮${C.reset}`;
+      } else {
+        return `  ${C.guide}╰${'─'.repeat(56)}╯${C.reset}`;
+      }
+    }
+
+    if (inCodeBlock) {
+      return `  ${C.guide}│${C.reset}  ${C.white}${line}${C.reset}`;
+    }
+
+    if (!trimmed) return '';
+
+    // Headers
+    if (/^#\s+/.test(line)) {
+      return `\n  ${C.granateBright}━━━ ${C.brightWhite}${line.replace(/^#\s+/, '')}${C.reset}${C.granateBright} ━━━${C.reset}\n`;
+    }
+    if (/^##\s+/.test(line)) {
+      return `\n  ${C.roseBold}■ ${C.brightWhite}${line.replace(/^##\s+/, '')}${C.reset}\n`;
+    }
+    if (/^###\s+/.test(line)) {
+      return `\n  ${C.gold}◆ ${C.brightWhite}${line.replace(/^###\s+/, '')}${C.reset}`;
+    }
+
+    // Horizontal rule
+    if (/^(\*{3,}|-{3,}|_{3,})$/.test(trimmed)) {
+      return `  ${C.guide}${'─'.repeat(56)}${C.reset}`;
+    }
+
+    // Blockquote
+    if (/^>\s*/.test(line)) {
+      return `  ${C.guide}│${C.reset} ${C.dim}${line.replace(/^>\s*/, '')}${C.reset}`;
+    }
+
+    let out = line;
+
+    // Bullet lists: * or -
+    if (/^(\s*)[*-]\s+(.*)/.test(out)) {
+      out = out.replace(/^(\s*)[*-]\s+(.*)/, (m, indent, rest) => {
+        return `${indent}  ${C.granateBright}•${C.reset} ${rest}`;
+      });
+    } else if (/^(\s*)(\d+)\.\s+(.*)/.test(out)) {
+      out = out.replace(/^(\s*)(\d+)\.\s+(.*)/, (m, indent, num, rest) => {
+        return `${indent}  ${C.gold}${num}.${C.reset} ${rest}`;
+      });
+    } else {
+      out = `  ${out}`;
+    }
+
+    // Inline formatting:
+    // Bold: **text** or __text__ -> bright bold white
+    out = out.replace(/\*\*([^*]+)\*\*/g, `${C.brightWhite}$1${C.reset}${C.white}`);
+    out = out.replace(/__([^_]+)__/g, `${C.brightWhite}$1${C.reset}${C.white}`);
+
+    // Inline code: `code` -> vivid cyan
+    out = out.replace(/`([^`]+)`/g, `${C.cyan}$1${C.reset}${C.white}`);
+
+    return `${C.white}${out}${C.reset}`;
+  }
+
+  return {
+    write(chunk) {
+      buffer += chunk;
+      const lines = buffer.split('\n');
+      buffer = lines.pop(); // keep remainder
+      for (const line of lines) {
+        onWrite(renderLine(line) + '\n');
+      }
+    },
+    flush() {
+      if (buffer) {
+        onWrite(renderLine(buffer) + '\n');
+        buffer = '';
+      }
+    },
+  };
+}
+
+/**
+ * Renders a structured tool execution card with rounded border container
+ */
+function printToolCard({ verb, color, target, lines = [], status = '✓ ok', isError = false, durationMs }) {
+  const durStr = durationMs !== undefined ? ` · ${formatDuration(durationMs)}` : '';
+  const outLines = [];
+  outLines.push(`  ${C.guide}╭─${C.reset} ${color}${verb}${C.reset} ${C.white}${target}${C.reset}`);
+  for (const l of lines) {
+    if (!l) continue;
+    outLines.push(`  ${C.guide}│${C.reset}  ${C.gray}${l}${C.reset}`);
+  }
+  const statusColor = isError ? C.red : C.green;
+  outLines.push(`  ${C.guide}╰─${C.reset} ${statusColor}${status}${C.reset}${C.darkGray}${durStr}${C.reset}\n`);
+  process.stdout.write(outLines.join('\n'));
 }
 
 const COMMANDS_REGISTRY = [
@@ -278,18 +390,18 @@ function renderCommandPalette(filter = '') {
 
   if (matches.length === 0) return '';
 
-  let out = `\n  ${C.granateDark}┌─ ${C.bold}${C.granateBright}Comandos Disponibles${C.reset} ${C.gray}(escribe para filtrar o presiona [Tab] para autocompletar)${C.reset} ${C.granateDark}${'─'.repeat(12)}┐${C.reset}\n`;
+  let out = `\n  ${C.guide}╭─ ${C.brightWhite}Comandos Disponibles${C.reset} ${C.gray}(escribe para filtrar o presiona [Tab] para autocompletar)${C.reset} ${C.guide}${'─'.repeat(16)}╮${C.reset}\n`;
   for (const item of matches.slice(0, 10)) {
     const cmdStr = `${C.bold}${C.rose}${item.cmd}${C.reset}${item.args ? ` ${C.gray}${item.args}${C.reset}` : ''}`;
     const rawCmdLen = item.cmd.length + (item.args ? item.args.length + 1 : 0);
     const padLen = Math.max(2, 28 - rawCmdLen);
     const padding = ' '.repeat(padLen);
-    out += `  ${C.granateDark}│${C.reset}   ${cmdStr}${padding}${C.white}${item.desc}${C.reset}\n`;
+    out += `  ${C.guide}│${C.reset}   ${cmdStr}${padding}${C.white}${item.desc}${C.reset}\n`;
   }
   if (matches.length > 10) {
-    out += `  ${C.granateDark}│${C.reset}   ${C.gray}... y ${matches.length - 10} comandos más (escribe más letras para filtrar)${C.reset}\n`;
+    out += `  ${C.guide}│${C.reset}   ${C.gray}... y ${matches.length - 10} comandos más (escribe más letras para filtrar)${C.reset}\n`;
   }
-  out += `  ${C.granateDark}└────────────────────────────────────────────────────────────────────────────────────────┘${C.reset}\n`;
+  out += `  ${C.guide}╰────────────────────────────────────────────────────────────────────────────────────────╯${C.reset}\n`;
   return out;
 }
 
@@ -428,7 +540,7 @@ function selectSessionInteractive(sessions, activeSessionId) {
         process.stdout.write(`\x1b[${renderedLinesCount}A\x1b[0J`);
       }
 
-      let out = `\n  ${C.granateBold}┌─ Selector Interactivo de Sesiones ──────────────────────────────────────┐${C.reset}\n`;
+      let out = `\n  ${C.granateBold}╭─ Selector Interactivo de Sesiones ──────────────────────────────────────╮${C.reset}\n`;
       out += `  ${C.gray}│ Usa las flechas [↑/↓] para navegar, [Enter] para elegir, [Esc] para salir │${C.reset}\n`;
       out += `  ${C.granateBold}├─────────────────────────────────────────────────────────────────────────┤${C.reset}\n`;
 
@@ -455,7 +567,7 @@ function selectSessionInteractive(sessions, activeSessionId) {
         }
       });
 
-      out += `  ${C.granateBold}└─────────────────────────────────────────────────────────────────────────┘${C.reset}\n`;
+      out += `  ${C.granateBold}╰─────────────────────────────────────────────────────────────────────────╯${C.reset}\n`;
 
       process.stdout.write(out);
       renderedLinesCount = out.split('\n').length - 1;
@@ -521,6 +633,8 @@ module.exports = {
   renderDiff,
   box,
   highlightMarkdown,
+  createMarkdownStream,
+  printToolCard,
   COMMANDS_REGISTRY,
   renderCommandPalette,
   renderWhoami,

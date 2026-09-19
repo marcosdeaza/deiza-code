@@ -116,17 +116,17 @@ function printHeader(cfg, currentMode, models) {
   const pct = usage && usage.token_limit > 0 ? Math.min(100, Math.round((usage.tokens_used / usage.token_limit) * 100)) : 0;
   const resetLabel = usage?.reset_in_seconds ? `${Math.ceil(usage.reset_in_seconds / 60)}m` : null;
 
-  console.log(`  ${C.white}Cuenta:${C.reset} ${C.bold}${cfg.name ? `${cfg.name} · ` : ''}${cfg.email || 'Conectada'}${C.reset} · ${C.granateBold}[${String(plan).toUpperCase()}]${C.reset} · ${C.gray}Uso:${C.reset} ${pct}%${resetLabel ? ` (${resetLabel} para reiniciar)` : ''}`);
-  if (cfg.isCustomEndpoint) {
-    console.log(`  ${C.white}Motor:${C.reset} ${C.gold}Endpoint personalizado${C.reset} ${C.gray}${cfg.apiBase}${C.reset} · ${C.white}Modelo:${C.reset} ${C.granateBright}${cfg.model}${C.reset}`);
-  } else {
-    const label = (cfg.model.includes('omniscient') || cfg.model.includes('liquid'))
-      ? `${C.granateBright}Deiza Omniscient${C.reset} ${C.gray}[Deiza Liquid 5.1 · infraestructura dedicada]${C.reset}`
-      : `${C.granateBright}${cfg.model}${C.reset}`;
-    console.log(`  ${C.white}Motor:${C.reset} ${label}`);
-  }
-  console.log(`  ${C.white}Modo:${C.reset} ${modeBadge(currentMode)} ${C.gray}${(MODE_INFO[currentMode] || MODE_INFO.build).desc}${C.reset}`);
-  console.log(`  ${C.white}Workspace:${C.reset} ${C.gray}${process.cwd()}${C.reset} [${projType}]${branchLabel}\n`);
+  const engineLabel = cfg.isCustomEndpoint
+    ? `${C.gold}Custom ${cfg.apiBase}${C.reset} · ${C.granateBright}${cfg.model}${C.reset}`
+    : `${C.granateBright}Deiza Omniscient${C.reset} ${C.gray}[Liquid 5.1 · 1M tokens]${C.reset}`;
+
+  let content = '';
+  content += `${C.white}Cuenta:${C.reset}     ${C.bold}${cfg.name ? `${cfg.name} · ` : ''}${cfg.email || 'Conectada'}${C.reset} · ${C.granateBold}[${String(plan).toUpperCase()}]${C.reset} · ${C.gray}Uso:${C.reset} ${pct}%${resetLabel ? ` (${resetLabel} para reiniciar)` : ''}\n`;
+  content += `${C.white}Motor:${C.reset}      ${engineLabel}\n`;
+  content += `${C.white}Modo:${C.reset}       ${modeBadge(currentMode)} ${C.gray}${(MODE_INFO[currentMode] || MODE_INFO.build).desc}${C.reset}\n`;
+  content += `${C.white}Workspace:${C.reset}  ${C.gray}${process.cwd()}${C.reset} [${projType}]${branchLabel}`;
+
+  console.log(box('Deiza Code — Entorno de Ejecución', content, C.granateBold));
 }
 
 async function startRepl(initialConfig) {
@@ -170,9 +170,9 @@ async function startRepl(initialConfig) {
     const tokLabel = curTokens >= 1000000
       ? `${(curTokens / 1000000).toFixed(2)}M`
       : curTokens >= 1000 ? `${(curTokens / 1000).toFixed(1)}k` : `${curTokens}`;
-    const pctLabel = curTokens > 0 ? `${((curTokens / 1000000) * 100).toFixed(2)}%` : '0.0%';
-    const contextBadge = `${C.darkGray}[${tokLabel}/1M · ${pctLabel}]${C.reset}`;
-    return `${C.granateBold}deiza-code${C.reset} ${modeBadge(currentMode)} ${contextBadge} ❯ `;
+    const pctLabel = curTokens > 0 ? `${((curTokens / 1000000) * 100).toFixed(1)}%` : '0%';
+    const contextBadge = `${C.darkGray}[${C.gold}${tokLabel}${C.darkGray}/1M · ${pctLabel}]${C.reset}`;
+    return `${C.granateBold}deiza${C.reset} ${modeBadge(currentMode)} ${contextBadge} ${C.roseBold}❯${C.reset} `;
   };
 
   const slashCompleter = (line) => {

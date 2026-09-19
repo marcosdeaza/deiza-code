@@ -17,7 +17,7 @@ const http = require('http');
 const https = require('https');
 const { StringDecoder } = require('string_decoder');
 const { Tools, TOOL_DEFINITIONS, MAX_TOOL_OUTPUT, isCommandRisky, isCommandCatastrophic, previewChange } = require('./tools');
-const { Status, C, createLiveLine, createSpinner, formatBytes, formatDuration } = require('./ui');
+const { Status, C, createLiveLine, createSpinner, formatBytes, formatDuration, createMarkdownStream, printToolCard } = require('./ui');
 const { buildSystemPrompt } = require('./prompt');
 const { isDeizaHost } = require('./config');
 const { getActiveContextTokens } = require('./session');
@@ -486,6 +486,120 @@ function toolLabel(call) {
   }
 }
 
+function buildToolCardData(call, result, tookMs) {
+  const name = call.name;
+  const a = call.args || {};
+  const verb = TOOL_VERB[name] || `● [${name}]`;
+  const color = TOOL_COLOR[name] || C.granateBold;
+  const isError = !!(result && result.error);
+
+  let target = '';
+  let lines = [];
+  let status = '✓ ok';
+
+  switch (name) {
+    case 'run_command': {
+      target = a.command || '';
+      const out = String(result?.stdout || '').split('\n').filter(l => l.trim());
+      const err = String(result?.stderr || '').split('\n').filter(l => l.trim());
+      const tail = [...out.slice(-8), ...err.slice(-4)];
+      lines = tail.map(l => (l.length > 140 ? l.slice(0, 137) + '...' : l));
+      if (result?.blocked) { status = 'bloqueado'; }
+      else if (result?.killed_by_timeout) { status = 'timeout'; }
+      else if (result?.exit_code === 0) { status = '✓ exit 0'; }
+      else { status = `✖ exit ${result?.exit_code ?? '?'}`; }
+      break;
+    }
+    case 'edit_file': {
+      target = a.path || '';
+      if (result?.error) { lines = [String(result.error).slice(0, 200)]; status = '✖ error'; }
+      else { status = '✓ guardado'; }
+      break;
+    }
+    case 'write_file': {
+      target = a.path || '';
+      if (result?.error) { lines = [String(result.error).slice(0, 200)]; status = '✖ error'; }
+      else {
+        lines = [`${result?.status === 'created' ? 'creado' : 'sobrescrito'} · ${result?.lines ?? '?'} líneas · ${formatBytes(result?.bytes_written || 0)}`];
+        status = '✓ guardado';
+      }
+      break;
+    }
+    case 'append_file': {
+      target = a.path || '';
+      if (result?.error) { lines = [String(result.error).slice(0, 200)]; status = '✖ error'; }
+      else {
+        lines = [`+${formatBytes(result?.bytes_appended || 0)} · ahora ${result?.total_lines ?? '?'} líneas`];
+        status = '✓ añadido';
+      }
+      break;
+    }
+    case 'read_file': {
+      target = (a.path || '') + (a.start_line ? ` (${a.start_line}-${a.end_line || ''})` : '');
+      if (result?.error) { lines = [String(result.error).slice(0, 200)]; status = '✖ error'; }
+      else { status = `✓ ${result?.total_lines ?? '?'} líneas leídas`; }
+      break;
+    }
+    case 'list_dir': {
+      target = a.path || '.';
+      if (result?.error) { lines = [String(result.error).slice(0, 200)]; status = '✖ error'; }
+      else { status = `✓ ${result?.total_items ?? 0} elementos`; }
+      break;
+    }
+    case 'search_files': {
+      target = a.query || '';
+      if (result?.error) { lines = [String(result.error).slice(0, 200)]; status = '✖ error'; }
+      else { status = `✓ ${result?.matches_count ?? 0} coincidencias`; }
+      break;
+    }
+    case 'delete_path': {
+      target = a.path || '';
+      status = result?.error ? '✖ error' : '✓ eliminado';
+      break;
+    }
+    case 'move_path': {
+      target = `${a.from} → ${a.to}`;
+      status = result?.error ? '✖ error' : '✓ movido';
+      break;
+    }
+    case 'fetch_url': {
+      target = a.url || '';
+      if (result?.error) { lines = [String(result.error).slice(0, 200)]; status = '✖ error'; }
+      else {
+        lines = [`HTTP ${result?.status} · ${formatBytes((result?.content || '').length)}${result?.truncated ? ' (truncado)' : ''}`];
+        status = (result?.status && result.status < 400) ? '✓ completado' : `HTTP ${result?.status}`;
+      }
+      break;
+    }
+    case 'invoke_subagent': {
+      target = `[${a.role || 'Worker'}] ${a.task || ''}`;
+      if (result?.error) { lines = [String(result.error).slice(0, 200)]; status = '✖ error'; }
+      else {
+        lines = [`informe de ${formatBytes((result?.report || '').length)}`];
+        status = '✓ completado';
+      }
+      break;
+    }
+    case 'view_image': {
+      target = a.path || '';
+      if (result?.error) { lines = [String(result.error).slice(0, 200)]; status = '✖ error'; }
+      else {
+        lines = [`${formatBytes(result?.size_bytes || 0)} · ${result?.mime_type || ''}`];
+        status = '✓ analizada';
+      }
+      break;
+    }
+    default: {
+      target = JSON.stringify(a).slice(0, 100);
+      status = isError ? '✖ error' : '✓ ok';
+      break;
+    }
+  }
+
+  const errStatus = isError || status.startsWith('✖') || status === 'bloqueado' || status === 'timeout';
+  return { verb, color, target, lines, status, isError: errStatus, durationMs: tookMs };
+}
+
 /** One dim line (or a few) summarizing what a tool did, printed under its label. */
 function toolResultSummary(name, result) {
   if (!result || typeof result !== 'object') return '';
@@ -556,7 +670,7 @@ async function runAgentTurn({ cfg, messages, userInput, confirmCallback, mode = 
   }
 
   const live = createLiveLine();
-  if (!quiet) console.log(`\n${C.granateDark}─────────────────────────────────────────────────────────────${C.reset}`);
+  if (!quiet) console.log(`\n${C.guide}─────────────────────────────────────────────────────────────${C.reset}`);
 
   let continuations = 0;
   let nudged = false;
@@ -591,6 +705,16 @@ async function runAgentTurn({ cfg, messages, userInput, confirmCallback, mode = 
     // The streaming progress line is replaced by the definitive label + result once the call runs.
     const closeToolLine = () => { if (toolLineOpen) { live.clear(); toolLineOpen = false; } };
 
+    const mdStream = createMarkdownStream((rendered) => {
+      stopSpinner();
+      closeToolLine();
+      if (!hasStreamed) {
+        process.stdout.write('\n');
+        hasStreamed = true;
+      }
+      process.stdout.write(rendered);
+    });
+
     let result;
     try {
       result = await streamCompletion({
@@ -604,18 +728,11 @@ async function runAgentTurn({ cfg, messages, userInput, confirmCallback, mode = 
         onChunk: (chunk) => {
           let text = visible(chunk);
           if (!text) return;
-          stopSpinner();
-          closeToolLine();
-          if (!hasStreamed) {
-            text = text.replace(/^\s+/, '');
-            if (!text) return;
-            process.stdout.write('\n');
-            hasStreamed = true;
-          }
-          process.stdout.write(text);
+          mdStream.write(text);
         },
         onToolProgress: ({ index, name, args }) => {
           stopSpinner();
+          mdStream.flush();
           if (index !== lastToolIdx) {
             closeToolLine();
             if (hasStreamed) { process.stdout.write('\n'); hasStreamed = false; }
@@ -637,6 +754,7 @@ async function runAgentTurn({ cfg, messages, userInput, confirmCallback, mode = 
     } catch (err) {
       stopSpinner();
       closeToolLine();
+      mdStream.flush();
       // A server that does not understand `tools` (some local endpoints): switch to XML blocks and retry.
       if (toolMode === 'native' && err.status >= 400 && err.status < 500 && /tool/i.test(String(err.body || err.message)) && !isDeizaHost(cfg.apiBase)) {
         toolMode = 'xml';
@@ -651,10 +769,11 @@ async function runAgentTurn({ cfg, messages, userInput, confirmCallback, mode = 
     }
     stopSpinner();
     closeToolLine();
+    mdStream.flush();
 
     const assistantText = result.text || '';
     const tail = visible('');
-    if (tail.trim()) { process.stdout.write(tail); hasStreamed = true; }
+    if (tail.trim()) { mdStream.write(tail); mdStream.flush(); hasStreamed = true; }
     if (hasStreamed) process.stdout.write('\n');
 
     stats.prompt += Number(result.usage?.prompt_tokens || estPromptTok);
@@ -760,7 +879,6 @@ async function runAgentTurn({ cfg, messages, userInput, confirmCallback, mode = 
         }
       }
 
-      if (call.name !== 'update_plan') console.log(toolLabel(call));
       stats.tools++;
       if (['write_file', 'append_file', 'edit_file'].includes(call.name) && call.args.path) stats.files.add(call.args.path);
       if (call.name === 'run_command') stats.commands++;
@@ -770,7 +888,7 @@ async function runAgentTurn({ cfg, messages, userInput, confirmCallback, mode = 
       if (['run_command', 'fetch_url', 'invoke_subagent'].includes(call.name)) {
         toolTimer = setInterval(() => {
           const el = formatDuration(Date.now() - t0);
-          live.set(`  ${C.gold}$ [ejecutando]${C.reset} ${C.white}${call.args?.command || call.name}${C.reset} ${C.darkGray}· ${el}${C.reset}`);
+          live.set(`  ${C.guide}│${C.reset}  ${C.gold}⠋ ejecutando...${C.reset} ${C.white}${call.args?.command || call.name}${C.reset} ${C.darkGray}· ${el}${C.reset}`);
         }, 120);
       }
       try {
@@ -780,9 +898,11 @@ async function runAgentTurn({ cfg, messages, userInput, confirmCallback, mode = 
       } finally {
         if (toolTimer) { clearInterval(toolTimer); toolTimer = null; live.clear(); }
       }
-      const summary = toolResultSummary(call.name, toolResult);
       const took = Date.now() - t0;
-      if (summary) console.log(summary + (took > 1500 ? ` ${C.darkGray}· ${formatDuration(took)}${C.reset}` : ''));
+      if (call.name !== 'update_plan') {
+        const cardData = buildToolCardData(call, toolResult, took);
+        printToolCard(cardData);
+      }
       pushResult(call, toolResult);
       if (!(toolResult && toolResult.error)) roundOk++;
     }
@@ -816,9 +936,9 @@ async function runAgentTurn({ cfg, messages, userInput, confirmCallback, mode = 
     parts.push(`${(stats.prompt + stats.completion).toLocaleString()} tokens`);
     if (stopReason === 'aborted') console.log(`  ${C.gold}[interrumpido]${C.reset} ${C.darkGray}· ${elapsed} · ${parts.join(' · ')}${C.reset}`);
     else if (stopReason === 'max_turns') console.log(`  ${C.gold}! Se alcanzó el máximo de ${MAX_TURNS} rondas en esta petición; pide "continúa" para seguir.${C.reset} ${C.darkGray}· ${elapsed} · ${parts.join(' · ')}${C.reset}`);
-    else if (stopReason === 'stuck') console.log(`  ${C.granateBright}✖ El motor no consigue ejecutar sus propias llamadas (${MAX_FAILED_ROUNDS} rondas seguidas fallidas). Reformula la petición o divídela en pasos más pequeños.${C.reset} ${C.darkGray}· ${elapsed} · ${parts.join(' · ')}${C.reset}`);
+    else if (stopReason === 'stuck') console.log(`  ${C.red}✖ El motor no consigue ejecutar sus propias llamadas (${MAX_FAILED_ROUNDS} rondas seguidas fallidas). Reformula la petición o divídela en pasos más pequeños.${C.reset} ${C.darkGray}· ${elapsed} · ${parts.join(' · ')}${C.reset}`);
     else console.log(`  ${C.green}✓ Completado con éxito en ${C.bold}${elapsed}${C.reset} ${C.darkGray}· ${parts.join(' · ')}${C.reset}`);
-    console.log(`${C.granateDark}─────────────────────────────────────────────────────────────${C.reset}\n`);
+    console.log(`${C.guide}─────────────────────────────────────────────────────────────${C.reset}\n`);
   }
 
   return {
