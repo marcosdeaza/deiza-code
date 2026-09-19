@@ -14,7 +14,7 @@ const { runLoginFlow, ensureAuthenticated, fetchModels, fetchUsage } = require('
 const { runAgentTurn, streamCompletion, compactContext } = require('./agent');
 const { Tools } = require('./tools');
 const { getGitContext, detectProjectType } = require('./context');
-const { createSession, saveSession, loadSession, listSessions, getLatestSession, updateSessionTitleFromPrompt, deleteSession, addSessionTokens, getActiveContextTokens } = require('./session');
+const { createSession, saveSession, loadSession, loadSessionAsync, listSessions, listSessionsWithCloud, getLatestSession, updateSessionTitleFromPrompt, deleteSession, addSessionTokens, getActiveContextTokens, configureCloudSync } = require('./session');
 const { detectImageInText, getClipboardImage } = require('./clipboard');
 
 const UPDATE_BASE = 'https://deiza.org/downloads';
@@ -146,6 +146,9 @@ async function startRepl(initialConfig) {
 
   printHeader(cfg, currentMode);
 
+  // Configure background Deiza Cloud sync with user credentials
+  configureCloudSync({ apiKey: cfg.apiKey, accountBase: cfg.accountBase });
+
   // Session persistence for the current workspace
   let activeSession = getLatestSession(process.cwd());
   const messages = [];
@@ -157,7 +160,7 @@ async function startRepl(initialConfig) {
       ? `${(ctxTokens / 1000000).toFixed(2)}M`
       : ctxTokens >= 1000 ? `${(ctxTokens / 1000).toFixed(1)}k` : `${ctxTokens}`;
     const pctLabel = ((ctxTokens / 1000000) * 100).toFixed(2);
-    console.log(`  ${C.rose}● Sesión persistente restaurada:${C.reset} ${C.white}${activeSession.title}${C.reset} ${C.gray}(${messages.length} mensajes · ${C.gold}${tokLabel} tokens en contexto activo${C.gray} [${pctLabel}% del 1M])${C.reset}`);
+    console.log(`  ${C.granateBright}● Sesión persistente restaurada:${C.reset} ${C.white}${activeSession.title}${C.reset} ${C.gray}(${messages.length} mensajes · ${C.gold}${tokLabel} tokens en contexto activo${C.gray} [${pctLabel}% del 1M])${C.reset}`);
     console.log(`  ${C.gray}Usa ${C.white}/new${C.gray} para iniciar limpia, ${C.white}/session${C.gray} para cambiar o ${C.white}/compact${C.gray} para comprimir memoria.${C.reset}\n`);
   } else {
     activeSession = createSession(process.cwd(), currentMode);
@@ -427,9 +430,9 @@ async function startRepl(initialConfig) {
 
         // If invoked without argument (e.g. /session or /resume), launch the interactive arrow-key selector!
         if (!sub || (cmd === '/resume' && !parts[1])) {
-          const sessions = listSessions(process.cwd());
+          const sessions = await listSessionsWithCloud(process.cwd());
           if (sessions.length === 0) {
-            console.log(`\n  ${C.gray}No hay conversaciones previas en este workspace. Usa ${C.white}/session new${C.gray} para crear una.${C.reset}\n`);
+            console.log(`\n  ${C.gray}No hay conversaciones previas registradas. Usa ${C.white}/session new${C.gray} para crear una.${C.reset}\n`);
             rl.prompt();
             return;
           }
@@ -445,14 +448,15 @@ async function startRepl(initialConfig) {
             messages.length = 0;
             console.log(`\n  ${C.green}✓ Nueva sesión iniciada:${C.reset} ${C.bold}${activeSession.id}${C.reset}\n`);
           } else if (chosen.id) {
-            const loaded = loadSession(chosen.id, process.cwd());
+            const loaded = await loadSessionAsync(chosen.id, process.cwd());
             if (loaded) {
               activeSession = loaded;
               messages.length = 0;
               if (Array.isArray(loaded.messages)) messages.push(...loaded.messages);
               if (loaded.mode) currentMode = normalizeMode(loaded.mode);
               const ctxTokens = getActiveContextTokens(messages);
-              console.log(`\n  ${C.green}✓ Sesión cargada:${C.reset} ${C.bold}${loaded.title}${C.reset} ${C.gray}(${messages.length} msgs · ${ctxTokens.toLocaleString()} tokens en contexto)${C.reset}\n`);
+              const cloudTag = loaded.source === 'cloud' ? ` ${C.cyan}[Nube]${C.reset}` : '';
+              console.log(`\n  ${C.green}✓ Sesión cargada:${C.reset} ${C.bold}${loaded.title}${C.reset}${cloudTag} ${C.gray}(${messages.length} msgs · ${ctxTokens.toLocaleString()} tokens en contexto)${C.reset}\n`);
             }
           }
           rl.setPrompt(getPrompt());
@@ -461,7 +465,8 @@ async function startRepl(initialConfig) {
         }
 
         if (sub === 'list' || sub === 'ls') {
-          console.log(renderSessionList(listSessions(process.cwd()), activeSession?.id));
+          const sessions = await listSessionsWithCloud(process.cwd());
+          console.log(renderSessionList(sessions, activeSession?.id));
           rl.prompt();
           return;
         }
@@ -489,7 +494,7 @@ async function startRepl(initialConfig) {
             }
             const delRes = deleteSession(targetId, process.cwd());
             if (delRes.success) {
-              console.log(`\n  ${C.green}✓ Sesión eliminada del disco:${C.reset} ${delRes.id}`);
+              console.log(`\n  ${C.green}✓ Sesión eliminada:${C.reset} ${delRes.id}`);
               if (activeSession && activeSession.id === delRes.id) {
                 activeSession = createSession(process.cwd(), currentMode);
                 messages.length = 0;
@@ -504,18 +509,20 @@ async function startRepl(initialConfig) {
             return;
           }
           if (!targetId) {
-            console.log(renderSessionList(listSessions(process.cwd()), activeSession?.id));
+            const sessions = await listSessionsWithCloud(process.cwd());
+            console.log(renderSessionList(sessions, activeSession?.id));
             rl.prompt();
             return;
           }
-          const loaded = loadSession(targetId, process.cwd());
+          const loaded = await loadSessionAsync(targetId, process.cwd());
           if (loaded) {
             activeSession = loaded;
             messages.length = 0;
             if (Array.isArray(loaded.messages)) messages.push(...loaded.messages);
             if (loaded.mode) currentMode = normalizeMode(loaded.mode);
             const tokStr = loaded.tokens?.total ? ` · ${C.gold}${loaded.tokens.total.toLocaleString()} tokens consumidos${C.reset}` : '';
-            console.log(`\n  ${C.green}✓ Sesión restaurada:${C.reset} ${C.bold}${loaded.title}${C.reset} ${C.gray}(${messages.length} msgs${tokStr})${C.reset}\n`);
+            const cloudTag = loaded.source === 'cloud' ? ` ${C.cyan}[Nube]${C.reset}` : '';
+            console.log(`\n  ${C.green}✓ Sesión restaurada:${C.reset} ${C.bold}${loaded.title}${C.reset}${cloudTag} ${C.gray}(${messages.length} msgs${tokStr})${C.reset}\n`);
             rl.setPrompt(getPrompt());
           } else {
             console.log(`\n  ${C.granateBright}✖ No se encontró la sesión:${C.reset} ${targetId}\n`);
@@ -523,7 +530,7 @@ async function startRepl(initialConfig) {
           rl.prompt();
           return;
         }
-        const trySession = loadSession(parts[1], process.cwd());
+        const trySession = await loadSessionAsync(parts[1], process.cwd());
         if (trySession) {
           activeSession = trySession;
           messages.length = 0;

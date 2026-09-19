@@ -10,7 +10,7 @@ const { loadConfig, saveConfig, VERSION, DEFAULT_MODEL, MODES, IS_CLOSED, normal
 const { ensureAuthenticated, askLine } = require('../src/auth');
 const { startRepl } = require('../src/index');
 const { runAgentTurn, compactContext } = require('../src/agent');
-const { listSessions, createSession, loadSession, deleteSession, getLatestSession, getActiveContextTokens, saveSession } = require('../src/session');
+const { listSessions, listSessionsWithCloud, createSession, loadSession, loadSessionAsync, deleteSession, getLatestSession, getActiveContextTokens, saveSession, configureCloudSync } = require('../src/session');
 
 function printHelp() {
   console.log(`
@@ -67,10 +67,11 @@ function printTokens(ses) {
   console.log(box('Métricas de Contexto y Ventana 1M', content, C.granate));
 }
 
-function handleSessionCommand(args) {
+async function handleSessionCommand(args) {
   const sub = (args[1] || 'list').toLowerCase();
   if (sub === 'list' || sub === 'ls') {
-    console.log(renderSessionList(listSessions(process.cwd())));
+    const sessions = await listSessionsWithCloud(process.cwd());
+    console.log(renderSessionList(sessions));
     return 0;
   }
   if (sub === 'new' || sub === 'create') {
@@ -92,7 +93,7 @@ function handleSessionCommand(args) {
   }
   if (sub === 'info' || sub === 'stats') {
     const targetId = args[2];
-    const ses = targetId ? loadSession(targetId, process.cwd()) : getLatestSession(process.cwd());
+    const ses = targetId ? await loadSessionAsync(targetId, process.cwd()) : getLatestSession(process.cwd());
     if (ses) console.log(renderSessionInfo(ses));
     else console.log(`\n  ${C.gray}No hay sesiones en este workspace.${C.reset}\n`);
     return 0;
@@ -133,7 +134,7 @@ async function main() {
     process.exit(0);
   }
   if (args[0] === 'session' || args[0] === 'sessions') {
-    process.exit(handleSessionCommand(args));
+    process.exit(await handleSessionCommand(args));
   }
   if (args.includes('--version') || args.includes('-v')) {
     console.log(`deiza-code v${VERSION}`);

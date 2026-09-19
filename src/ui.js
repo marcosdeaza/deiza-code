@@ -431,18 +431,18 @@ function renderWhoami({ email, name, plan, apiKey, apiBase, isCustom, usage, cur
 
 function renderSessionList(sessions, activeSessionId) {
   if (!sessions || sessions.length === 0) {
-    return `\n  ${C.gray}No hay conversaciones guardadas en este workspace. Usa ${C.white}/session new${C.gray} para iniciar una limpia.${C.reset}\n`;
+    return `\n  ${C.gray}No hay conversaciones guardadas. Usa ${C.white}/session new${C.gray} para iniciar una limpia.${C.reset}\n`;
   }
 
   let totalTokensAll = 0;
-  let content = `  ${C.darkGray}Sesiones en este workspace (usa ${C.white}/session resume <id>${C.darkGray} para continuar o ${C.white}/session delete <id>${C.darkGray} para borrar):${C.reset}\n\n`;
+  let content = `  ${C.darkGray}Sesiones disponibles (usa ${C.white}/session resume <id>${C.darkGray} para continuar o ${C.white}/session delete <id>${C.darkGray} para borrar):${C.reset}\n\n`;
 
   for (const s of sessions) {
     const isActive = s.id === activeSessionId;
     const bullet = isActive ? `${C.green}● [ACTIVA]${C.reset}` : `${C.gray}○${C.reset}`;
     const modeStr = modeBadge(s.mode || 'build');
     const dateStr = s.updatedAt ? new Date(s.updatedAt).toLocaleString('es-ES', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
-    const title = s.title.length > 32 ? s.title.slice(0, 30) + '..' : s.title;
+    const title = s.title.length > 28 ? s.title.slice(0, 26) + '..' : s.title;
     const tokens = s.tokens || { total: 0 };
     totalTokensAll += (tokens.total || 0);
 
@@ -450,14 +450,18 @@ function renderSessionList(sessions, activeSessionId) {
       ? `${C.gold}${tokens.total.toLocaleString()} tok${C.reset}`
       : `${C.darkGray}0 tok${C.reset}`;
 
-    content += `  ${bullet} ${C.bold}${C.white}${s.id}${C.reset}  ${modeStr}  ${C.gray}${dateStr}${C.reset}  ${C.white}${title}${C.reset}  ${tokenStr}  ${C.darkGray}(${s.messageCount} msgs)${C.reset}\n`;
+    const originTag = s.source === 'cloud'
+      ? ` ${C.cyan}[Nube]${C.reset}`
+      : (!s.isCurrentWorkspace ? ` ${C.gray}[Global]${C.reset}` : '');
+
+    content += `  ${bullet} ${C.bold}${C.white}${s.id}${C.reset}  ${modeStr}${originTag}  ${C.gray}${dateStr}${C.reset}  ${C.white}${title}${C.reset}  ${tokenStr}  ${C.darkGray}(${s.messageCount} msgs)${C.reset}\n`;
   }
 
   content += `\n  ${C.darkGray}───────────────────────────────────────────────────────────────────${C.reset}\n`;
-  content += `  ${C.white}Total acumulado en este workspace:${C.reset} ${C.bold}${C.green}${totalTokensAll.toLocaleString()}${C.reset} ${C.white}tokens consumidos across ${sessions.length} sesiones.${C.reset}\n`;
+  content += `  ${C.white}Total sesiones sincronizadas:${C.reset} ${C.bold}${C.green}${sessions.length}${C.reset} ${C.white}conversaciones (${totalTokensAll.toLocaleString()} tokens acumulados).${C.reset}\n`;
   content += `  ${C.gray}Comandos rápidos: /session new [nombre] · /session resume <id> · /session delete <id> · /session info${C.reset}`;
 
-  return box('Historial de Sesiones y Consumo de Tokens', content, C.granate);
+  return box('Historial de Sesiones (Local & Nube Deiza)', content, C.granate);
 }
 
 function renderSessionInfo(session) {
@@ -515,6 +519,8 @@ function selectSessionInteractive(sessions, activeSessionId) {
         msgCount: s.messageCount || (Array.isArray(s.messages) ? s.messages.length : 0),
         tokens: s.tokens?.total || 0,
         isActive: s.id === activeSessionId,
+        source: s.source || 'local',
+        isCurrentWorkspace: s.isCurrentWorkspace !== false,
       })),
       {
         type: 'new',
@@ -525,6 +531,8 @@ function selectSessionInteractive(sessions, activeSessionId) {
         msgCount: 0,
         tokens: 0,
         isActive: false,
+        source: 'local',
+        isCurrentWorkspace: true,
       },
     ];
 
@@ -547,7 +555,7 @@ function selectSessionInteractive(sessions, activeSessionId) {
       const visibleSlice = items.slice(0, 10);
       visibleSlice.forEach((item, idx) => {
         const isSelected = idx === selectedIndex;
-        const pointer = isSelected ? `${C.roseBold}❯${C.reset}` : ' ';
+        const pointer = isSelected ? `${C.granateBright}❯${C.reset}` : ' ';
         const activeMarker = item.isActive ? ` ${C.green}●${C.reset}` : '  ';
 
         if (item.type === 'new') {
@@ -558,12 +566,13 @@ function selectSessionInteractive(sessions, activeSessionId) {
         } else {
           const idColor = isSelected ? `${C.white}${C.bold}` : `${C.gray}`;
           const badge = modeBadge(item.mode);
-          const rawTitle = item.title.length > 28 ? item.title.slice(0, 26) + '..' : item.title;
+          const rawTitle = item.title.length > 26 ? item.title.slice(0, 24) + '..' : item.title;
           const titleStr = isSelected ? `${C.white}${C.bold}${rawTitle}${C.reset}` : `${C.white}${rawTitle}${C.reset}`;
           const tokStr = item.tokens > 0 ? `${C.gold}${(item.tokens / 1000).toFixed(1)}k tok${C.reset}` : `${C.darkGray}0 tok${C.reset}`;
           const countStr = `${C.gray}${item.msgCount}m${C.reset}`;
+          const cloudIcon = item.source === 'cloud' ? `${C.cyan}☁ ${C.reset}` : '';
 
-          out += `  │  ${pointer}${activeMarker} ${idColor}${item.id}${C.reset}  ${badge}  ${titleStr.padEnd(30)} ${tokStr} · ${countStr}   │\n`;
+          out += `  │  ${pointer}${activeMarker} ${cloudIcon}${idColor}${item.id}${C.reset}  ${badge}  ${titleStr.padEnd(28)} ${tokStr} · ${countStr}   │\n`;
         }
       });
 
