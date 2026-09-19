@@ -27,6 +27,8 @@ const header = `#!/usr/bin/env node
  * https://deiza.org
  */
 
+'use strict';
+
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -34,7 +36,7 @@ const http = require('http');
 const https = require('https');
 const crypto = require('crypto');
 const readline = require('readline');
-const { exec, spawn, execSync } = require('child_process');
+const { exec, spawn, execSync, execFileSync } = require('child_process');
 `;
 
 const uiCode = cleanCode(read('src/ui.js'));
@@ -51,10 +53,10 @@ const binCode = cleanCode(read('bin/deiza.js'));
 
 const fullBundle = [
   header,
-  '// ── 1. UI & Terminal Aesthetics ──',
-  uiCode,
-  '// ── 2. Configuration ──',
+  '// ── 1. Configuration ──',
   configCode,
+  '// ── 2. UI & Terminal Aesthetics ──',
+  uiCode,
   '// ── 3. Session Persistence ──',
   sessionCode,
   '// ── 4. Clipboard & Image Detection ──',

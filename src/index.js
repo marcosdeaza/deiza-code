@@ -1,6 +1,6 @@
 /**
  * DEIZA CODE — Interactive Terminal Coding Agent
- * Main REPL, Slash Commands, and Orchestration.
+ * Main REPL, slash commands and orchestration.
  */
 
 const fs = require('fs');
@@ -8,155 +8,150 @@ const path = require('path');
 const https = require('https');
 const { exec } = require('child_process');
 const readline = require('readline');
-const { C, BANNER, Status, box, COMMANDS_REGISTRY, renderCommandPalette, renderWhoami, renderSessionList, renderSessionInfo } = require('./ui');
-const { loadConfig, saveConfig, DEFAULT_MODEL, DEFAULT_DEIZA_API, VERSION } = require('./config');
-const { runLoginFlow, fetchModels, fetchUsage, validateApiKey } = require('./auth');
+const { C, BANNER, Status, box, COMMANDS_REGISTRY, MODE_INFO, modeBadge, renderModes, renderCommandPalette, renderWhoami, renderSessionList, renderSessionInfo } = require('./ui');
+const { loadConfig, saveConfig, DEFAULT_MODEL, VERSION, MODES, normalizeMode, normalizeUrl, isDeizaHost } = require('./config');
+const { runLoginFlow, ensureAuthenticated, fetchModels, fetchUsage } = require('./auth');
 const { runAgentTurn, streamCompletion } = require('./agent');
 const { Tools } = require('./tools');
 const { getGitContext, detectProjectType } = require('./context');
-const { createSession, saveSession, loadSession, listSessions, getLatestSession, updateSessionTitleFromPrompt, deleteSession, addSessionTokens, findSessionId } = require('./session');
+const { createSession, saveSession, loadSession, listSessions, getLatestSession, updateSessionTitleFromPrompt, deleteSession, addSessionTokens } = require('./session');
 const { detectImageInText, getClipboardImage } = require('./clipboard');
+
+const UPDATE_BASE = 'https://deiza.org/downloads';
 
 async function checkLatestVersion() {
   return new Promise((resolve) => {
-    const req = https.get('https://deiza.org/downloads/version.json', { timeout: 2000 }, (res) => {
-      if (res.statusCode !== 200) return resolve(null);
+    const req = https.get(`${UPDATE_BASE}/version.json`, { timeout: 2500 }, (res) => {
+      if (res.statusCode !== 200) { res.resume(); return resolve(null); }
       let body = '';
       res.on('data', c => { body += c; });
       res.on('end', () => {
-        try {
-          resolve(JSON.parse(body));
-        } catch {
-          resolve(null);
-        }
+        try { resolve(JSON.parse(body)); } catch { resolve(null); }
       });
     });
+    req.on('timeout', () => { req.destroy(); resolve(null); });
     req.on('error', () => resolve(null));
   });
 }
 
+function isNewerVersion(remote, local) {
+  const a = String(remote || '').split('.').map(n => parseInt(n, 10) || 0);
+  const b = String(local || '').split('.').map(n => parseInt(n, 10) || 0);
+  for (let i = 0; i < 3; i++) {
+    if ((a[i] || 0) > (b[i] || 0)) return true;
+    if ((a[i] || 0) < (b[i] || 0)) return false;
+  }
+  return false;
+}
+
+/**
+ * Replace the running bundle in place (works for the installer layout on every OS);
+ * falls back to the official installer when the file is not a bundle or not writable.
+ */
 function runAutoUpdate() {
   return new Promise((resolve, reject) => {
-    // If running as a standalone node script, attempt direct in-place update
     const targetScript = process.argv[1];
-    if (targetScript && fs.existsSync(targetScript) && targetScript.endsWith('.js')) {
-      const file = fs.createWriteStream(targetScript);
-      https.get('https://deiza.org/downloads/deiza-code.js', (res) => {
-        if (res.statusCode === 200) {
-          res.pipe(file);
-          file.on('finish', () => {
-            file.close();
-            try { fs.chmodSync(targetScript, 0o755); } catch (e) {}
-            resolve('Actualización aplicada directamente.');
-          });
-        } else {
-          fallbackInstaller(resolve, reject);
-        }
-      }).on('error', () => fallbackInstaller(resolve, reject));
-      return;
+    let isBundle = false;
+    try {
+      isBundle = !!targetScript && fs.existsSync(targetScript) && fs.readFileSync(targetScript, 'utf-8', { flag: 'r' }).slice(0, 400).includes('DEIZA CODE');
+      if (isBundle) fs.accessSync(targetScript, fs.constants.W_OK);
+    } catch {
+      isBundle = false;
     }
-    fallbackInstaller(resolve, reject);
+    if (!isBundle) return fallbackInstaller(resolve, reject);
+
+    const tmp = `${targetScript}.new`;
+    const file = fs.createWriteStream(tmp);
+    https.get(`${UPDATE_BASE}/deiza-code.js`, (res) => {
+      if (res.statusCode !== 200) { res.resume(); file.close(); return fallbackInstaller(resolve, reject); }
+      res.pipe(file);
+      file.on('finish', () => {
+        file.close(() => {
+          try {
+            fs.renameSync(tmp, targetScript);
+            try { fs.chmodSync(targetScript, 0o755); } catch {}
+            resolve('Actualización aplicada directamente.');
+          } catch (err) {
+            fallbackInstaller(resolve, reject);
+          }
+        });
+      });
+    }).on('error', () => fallbackInstaller(resolve, reject));
   });
 }
 
 function fallbackInstaller(resolve, reject) {
   const isWin = process.platform === 'win32';
   const cmd = isWin
-    ? 'powershell -ExecutionPolicy Bypass -Command "irm https://deiza.org/install.ps1 | iex"'
+    ? 'powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://deiza.org/install.ps1 | iex"'
     : 'curl -fsSL https://deiza.org/install.sh | bash';
-
-  exec(cmd, (err, stdout, stderr) => {
+  exec(cmd, { windowsHide: true }, (err, stdout, stderr) => {
     if (err) return reject(new Error(stderr || err.message));
     resolve(stdout);
   });
 }
 
-async function startRepl(initialConfig) {
-  let cfg = initialConfig;
-  let currentMode = cfg.mode || 'build';
-
-  console.clear();
-  console.log(BANNER);
-
-  // Fetch models if native deiza
-  const models = await fetchModels(cfg.apiKey, cfg.apiBase);
-  let activeModel = cfg.model || DEFAULT_MODEL;
-  if (models.length > 0 && !models.some(m => m.id === activeModel)) {
-    activeModel = models[0]?.id || activeModel;
-  }
-  cfg.model = activeModel;
-
-  // Workspace Info
+function printHeader(cfg, currentMode, models) {
   const git = getGitContext();
   const projType = detectProjectType();
   const branchLabel = git.isGit ? ` · ${C.cyan}⎇ ${git.branch}${C.reset}` : '';
-
-  // Usage info
-  const usage = await fetchUsage(cfg.apiKey, cfg.apiBase);
+  const usage = cfg.usage;
   const plan = usage?.plan || cfg.plan || 'pro';
   const pct = usage && usage.token_limit > 0 ? Math.min(100, Math.round((usage.tokens_used / usage.token_limit) * 100)) : 0;
   const resetLabel = usage?.reset_in_seconds ? `${Math.ceil(usage.reset_in_seconds / 60)}m` : null;
 
+  console.log(`  ${C.white}Cuenta:${C.reset} ${C.bold}${cfg.name ? `${cfg.name} · ` : ''}${cfg.email || 'Conectada'}${C.reset} · ${C.granateBold}[${String(plan).toUpperCase()}]${C.reset} · ${C.gray}Uso:${C.reset} ${pct}%${resetLabel ? ` (${resetLabel} para reiniciar)` : ''}`);
   if (cfg.isCustomEndpoint) {
-    console.log(`  ${C.white}Modo:${C.reset} ${C.gold}Endpoint Personalizado / OpenAI Compatible${C.reset}`);
-    console.log(`  ${C.white}URL:${C.reset} ${C.gray}${cfg.apiBase}${C.reset}`);
+    console.log(`  ${C.white}Motor:${C.reset} ${C.gold}Endpoint personalizado${C.reset} ${C.gray}${cfg.apiBase}${C.reset} · ${C.white}Modelo:${C.reset} ${C.granateBright}${cfg.model}${C.reset}`);
   } else {
-    if (plan === 'free') {
-      console.log(`\n  ${C.granateBright}✖ Acceso restringido:${C.reset} Deiza Code requiere un plan de pago activo (${C.bold}Friend${C.reset} o ${C.bold}Signet${C.reset}).`);
-      console.log(`  Actualiza tu suscripción en: ${C.white}https://deiza.org/plans${C.reset}\n`);
-      process.exit(1);
-    }
-    console.log(`  ${C.white}Cuenta:${C.reset} ${C.bold}${cfg.email || 'Conectada'}${C.reset} · ${C.granateBold}[${plan.toUpperCase()}]${C.reset} · ${C.gray}Uso:${C.reset} ${pct}%${resetLabel ? ` (${resetLabel} restantes)` : ''}`);
+    const label = (cfg.model.includes('omniscient') || cfg.model.includes('liquid'))
+      ? `${C.granateBright}Deiza Omniscient${C.reset} ${C.gray}[Liquid 5.1 · Amazon AWS Cluster]${C.reset}`
+      : `${C.granateBright}${cfg.model}${C.reset}`;
+    console.log(`  ${C.white}Motor:${C.reset} ${label}`);
+  }
+  console.log(`  ${C.white}Modo:${C.reset} ${modeBadge(currentMode)} ${C.gray}${(MODE_INFO[currentMode] || MODE_INFO.build).desc}${C.reset}`);
+  console.log(`  ${C.white}Workspace:${C.reset} ${C.gray}${process.cwd()}${C.reset} [${projType}]${branchLabel}\n`);
+}
+
+async function startRepl(initialConfig) {
+  let cfg = initialConfig;
+  let currentMode = normalizeMode(cfg.mode || cfg.defaultMode);
+
+  console.clear();
+  console.log(BANNER);
+
+  // Model list only matters for the native engine; a custom endpoint keeps whatever the user set.
+  if (!cfg.isCustomEndpoint) {
+    const models = await fetchModels(cfg.apiKey, cfg.accountBase);
+    if (models.length > 0 && !models.some(m => m.id === cfg.model)) cfg.model = models[0].id || DEFAULT_MODEL;
+  } else if (!cfg.model || cfg.model === DEFAULT_MODEL) {
+    cfg.model = cfg.endpointModel || 'default';
   }
 
-  const modelLabel = (!cfg.isCustomEndpoint && (activeModel.includes('omniscient') || activeModel.includes('liquid')))
-    ? `${C.granateBright}Deiza Omniscient${C.reset} ${C.gray}[Liquid 5.1 · Amazon AWS Cluster] (BETA)${C.reset}`
-    : `${C.granateBright}${activeModel}${C.reset}`;
+  printHeader(cfg, currentMode);
 
-  console.log(`  ${C.white}Modelo activo:${C.reset} ${modelLabel}`);
-  console.log(`  ${C.white}Workspace:${C.reset} ${C.gray}${process.cwd()}${C.reset} [${projType}]${branchLabel}\n`);
-
-  // Session Persistence for current workspace
+  // Session persistence for the current workspace
   let activeSession = getLatestSession(process.cwd());
   const messages = [];
 
   if (activeSession && Array.isArray(activeSession.messages) && activeSession.messages.length > 0) {
     messages.push(...activeSession.messages);
-    if (activeSession.mode) currentMode = activeSession.mode;
     console.log(`  ${C.rose}● Sesión persistente restaurada:${C.reset} ${C.white}${activeSession.title}${C.reset} ${C.darkGray}(${messages.length} mensajes guardados)${C.reset}`);
     console.log(`  ${C.gray}Usa ${C.white}/new${C.gray} para iniciar limpia o ${C.white}/history${C.gray} para ver sesiones anteriores.${C.reset}\n`);
   } else {
     activeSession = createSession(process.cwd(), currentMode);
   }
 
-  console.log(`  ${C.gray}Escribe ${C.rose}/ ${C.gray}para ver comandos en tiempo real, o escribe tu consulta directamente.${C.reset}\n`);
-
-  // Non-blocking background version check
-  checkLatestVersion().then((remote) => {
-    if (remote && remote.version) {
-      const localVer = VERSION;
-      if (remote.version !== localVer) {
-        console.log(`\n  ${C.gold}🔔 Nueva versión de Deiza Code disponible: ${C.bold}v${remote.version}${C.reset} ${C.gray}(actual: v${localVer})${C.reset}. Ejecuta ${C.bold}/update${C.reset} para actualizar en 1 clic.\n`);
-        rl.prompt(true);
-      }
-    }
-  }).catch(() => {});
+  console.log(`  ${C.gray}Escribe ${C.rose}/ ${C.gray}para ver comandos, o escribe tu petición directamente.${C.reset}\n`);
 
   const getPrompt = () => {
-    const badge = currentMode === 'plan'
-      ? `${C.cyan}[PLAN]${C.reset}`
-      : `${C.rose}[BUILD]${C.reset}`;
     const curTokens = activeSession?.tokens?.total || 0;
     const tokLabel = curTokens >= 1000000
       ? `${(curTokens / 1000000).toFixed(2)}M`
-      : curTokens >= 1000
-        ? `${(curTokens / 1000).toFixed(1)}k`
-        : `${curTokens}`;
-    const pctLabel = curTokens > 0
-      ? `${((curTokens / 1000000) * 100).toFixed(2)}%`
-      : '0.0%';
+      : curTokens >= 1000 ? `${(curTokens / 1000).toFixed(1)}k` : `${curTokens}`;
+    const pctLabel = curTokens > 0 ? `${((curTokens / 1000000) * 100).toFixed(2)}%` : '0.0%';
     const contextBadge = `${C.darkGray}[${tokLabel}/1M · ${pctLabel}]${C.reset}`;
-    return `${C.granateBold}deiza-code${C.reset} ${badge} ${contextBadge} ❯ `;
+    return `${C.granateBold}deiza-code${C.reset} ${modeBadge(currentMode)} ${contextBadge} ❯ `;
   };
 
   const slashCompleter = (line) => {
@@ -172,14 +167,16 @@ async function startRepl(initialConfig) {
     output: process.stdout,
     completer: slashCompleter,
     prompt: getPrompt(),
+    terminal: process.stdin.isTTY,
   });
 
-  // Real-time keystroke listener: typing '/' on an empty line immediately renders command palette
-  // Debounced to prevent corrupting paste streams in Windows CMD / PowerShell
+  // Typing '/' on an empty line shows the command palette (debounced so pastes are not corrupted)
   let keypressSlashTimer = null;
-  readline.emitKeypressEvents(process.stdin);
+  let busy = false; // while the agent or a login prompt runs, the palette stays quiet
   if (process.stdin.isTTY) {
-    process.stdin.on('keypress', (str, key) => {
+    readline.emitKeypressEvents(process.stdin, rl);
+    process.stdin.on('keypress', (str) => {
+      if (busy) return;
       if (str === '/' && rl.line === '') {
         if (keypressSlashTimer) clearTimeout(keypressSlashTimer);
         keypressSlashTimer = setTimeout(() => {
@@ -195,45 +192,118 @@ async function startRepl(initialConfig) {
     });
   }
 
-  // Safe confirmation prompt helper
-  const confirmAction = (promptText) => {
-    return new Promise((resolve) => {
-      rl.question(`  ${C.gold}⚠️  ${promptText}${C.reset}`, (answer) => {
-        const a = answer.trim().toLowerCase();
-        resolve(a === 'y' || a === 's' || a === 'yes' || a === 'si' || a === '');
-      });
+  const confirmAction = (promptText) => new Promise((resolve) => {
+    rl.question(`  ${C.gold}⚠ ${promptText}${C.reset}`, (answer) => {
+      const a = String(answer || '').trim().toLowerCase();
+      resolve(a === 'y' || a === 's' || a === 'yes' || a === 'si' || a === 'sí' || a === '');
     });
+  });
+
+  const setMode = (mode, { persist = false } = {}) => {
+    currentMode = normalizeMode(mode);
+    if (activeSession) { activeSession.mode = currentMode; saveSession(activeSession); }
+    if (persist) { cfg.defaultMode = currentMode; saveConfig(cfg); }
+    const info = MODE_INFO[currentMode];
+    console.log(`  ${C.green}✓ Modo ${modeBadge(currentMode)}${C.reset} ${C.gray}${info.desc}${persist ? ' (guardado por defecto)' : ''}${C.reset}\n`);
+    rl.setPrompt(getPrompt());
   };
+
+  // Runs one agent request with the terminal in "busy" state
+  const runTurn = async (input, images = []) => {
+    busy = true;
+    try {
+      const turnResult = await runAgentTurn({
+        cfg,
+        messages,
+        userInput: input,
+        confirmCallback: confirmAction,
+        mode: currentMode,
+        images,
+      });
+      updateSessionTitleFromPrompt(activeSession, input);
+      activeSession.messages = messages;
+      activeSession.mode = currentMode;
+      if (turnResult?.usage) addSessionTokens(activeSession, turnResult.usage);
+      else saveSession(activeSession);
+    } catch (err) {
+      const msg = err?.message || String(err);
+      if (msg === 'AUTH_EXPIRED') {
+        console.log(Status.error('Tu sesión ha expirado o la clave fue revocada.'));
+        await doLogin(true);
+      } else if (msg === 'PLAN_REQUIRED') {
+        console.log(Status.error('Deiza Code requiere un plan de pago activo (Friend o Signet): https://deiza.org/plans'));
+      } else if (msg === 'USAGE_LIMIT_EXCEEDED') {
+        console.log(Status.error('Has alcanzado el límite de uso de tu plan. Consulta /usage para ver cuándo se reinicia.'));
+      } else {
+        console.log(Status.error(msg));
+      }
+      // Drop the dangling user message so a retry does not duplicate it
+      if (messages.length && messages[messages.length - 1].role === 'user') messages.pop();
+    } finally {
+      busy = false;
+    }
+  };
+
+  const doLogin = async (force) => {
+    busy = true;
+    try {
+      cfg = await ensureAuthenticated(cfg, { rl, force });
+      console.log(`  ${C.gray}Cuenta activa: ${C.white}${cfg.email}${C.gray} · plan ${C.white}${String(cfg.plan).toUpperCase()}${C.reset}\n`);
+    } catch (err) {
+      if (err?.message === 'PLAN_REQUIRED') { rl.close(); process.exit(1); }
+      console.log(Status.error(err.message));
+    } finally {
+      busy = false;
+    }
+  };
+
+  // Non-blocking background version check
+  checkLatestVersion().then((remote) => {
+    if (remote && remote.version && isNewerVersion(remote.version, VERSION) && !busy) {
+      console.log(`\n  ${C.gold}Nueva versión de Deiza Code disponible: ${C.bold}v${remote.version}${C.reset} ${C.gray}(actual: v${VERSION})${C.reset}. Ejecuta ${C.bold}/update${C.reset} para actualizar.\n`);
+      rl.prompt(true);
+    }
+  }).catch(() => {});
 
   rl.prompt();
 
   rl.on('line', async (line) => {
+    if (busy) return; // a login/confirm prompt owns the input right now
     const input = (line || '').replace(/\r/g, '').trim();
-    if (!input) {
-      rl.prompt();
-      return;
-    }
+    if (!input) { rl.prompt(); return; }
 
-    // Slash Commands Handling
     if (input.startsWith('/')) {
-      const parts = input.split(' ');
+      const parts = input.split(/\s+/);
       const cmd = parts[0].toLowerCase();
 
       if (cmd === '/' || cmd === '/help') {
         console.log(renderCommandPalette(parts[1] || ''));
+        console.log(renderModes(currentMode));
+        rl.prompt();
+        return;
+      }
+
+      if (cmd === '/build' || cmd === '/copilot' || cmd === '/plan') {
+        setMode(cmd.slice(1));
+        const rest = parts.slice(1).join(' ').trim();
+        if (rest) { await runTurn(rest); rl.setPrompt(getPrompt()); }
+        rl.prompt();
+        return;
+      }
+
+      if (cmd === '/mode') {
+        const target = (parts[1] || '').toLowerCase();
+        if (MODES.includes(target)) setMode(target);
+        else console.log(renderModes(currentMode));
         rl.prompt();
         return;
       }
 
       if (cmd === '/whoami') {
-        const currentUsage = await fetchUsage(cfg.apiKey, cfg.apiBase);
+        const currentUsage = await fetchUsage(cfg.apiKey, cfg.accountBase);
         console.log(renderWhoami({
-          email: cfg.email,
-          plan: cfg.plan,
-          apiKey: cfg.apiKey,
-          apiBase: cfg.apiBase,
-          usage: currentUsage,
-          currentMode,
+          email: cfg.email, name: cfg.name, plan: currentUsage?.plan || cfg.plan, apiKey: cfg.apiKey,
+          apiBase: cfg.apiBase, isCustom: cfg.isCustomEndpoint, usage: currentUsage, currentMode,
         }));
         rl.prompt();
         return;
@@ -241,16 +311,11 @@ async function startRepl(initialConfig) {
 
       if (cmd === '/session' || cmd === '/sessions' || cmd === '/history') {
         const sub = (parts[1] || 'list').toLowerCase();
-
-        // 1. List sessions
         if (sub === 'list' || sub === 'ls') {
-          const list = listSessions(process.cwd());
-          console.log(renderSessionList(list, activeSession?.id));
+          console.log(renderSessionList(listSessions(process.cwd()), activeSession?.id));
           rl.prompt();
           return;
         }
-
-        // 2. Create new session
         if (sub === 'new' || sub === 'create') {
           const title = parts.slice(2).join(' ').trim() || null;
           activeSession = createSession(process.cwd(), currentMode, title);
@@ -260,13 +325,37 @@ async function startRepl(initialConfig) {
           rl.prompt();
           return;
         }
-
-        // 3. Resume / switch to session
-        if (sub === 'resume' || sub === 'switch' || sub === 'open' || sub === 'load') {
+        if (sub === 'resume' || sub === 'switch' || sub === 'open' || sub === 'load' || sub === 'info' || sub === 'stats' || sub === 'tokens' || sub === 'token' || sub === 'delete' || sub === 'rm' || sub === 'drop') {
+          if (sub === 'info' || sub === 'stats' || sub === 'tokens' || sub === 'token') {
+            console.log(renderSessionInfo(activeSession));
+            rl.prompt();
+            return;
+          }
           const targetId = parts[2];
+          if (sub === 'delete' || sub === 'rm' || sub === 'drop') {
+            if (!targetId) {
+              console.log(`\n  ${C.rose}Uso:${C.reset} ${C.bold}/session delete <id_de_sesion>${C.reset}\n`);
+              rl.prompt();
+              return;
+            }
+            const delRes = deleteSession(targetId, process.cwd());
+            if (delRes.success) {
+              console.log(`\n  ${C.green}✓ Sesión eliminada del disco:${C.reset} ${delRes.id}`);
+              if (activeSession && activeSession.id === delRes.id) {
+                activeSession = createSession(process.cwd(), currentMode);
+                messages.length = 0;
+                console.log(`  ${C.cyan}● Era la sesión activa: se ha iniciado una nueva sesión limpia:${C.reset} ${activeSession.id}\n`);
+              } else {
+                console.log('');
+              }
+            } else {
+              console.log(`\n  ${C.granateBright}✖ No se encontró la sesión:${C.reset} ${targetId}\n`);
+            }
+            rl.prompt();
+            return;
+          }
           if (!targetId) {
-            const list = listSessions(process.cwd());
-            console.log(renderSessionList(list, activeSession?.id));
+            console.log(renderSessionList(listSessions(process.cwd()), activeSession?.id));
             rl.prompt();
             return;
           }
@@ -274,74 +363,34 @@ async function startRepl(initialConfig) {
           if (loaded) {
             activeSession = loaded;
             messages.length = 0;
-            if (Array.isArray(loaded.messages)) {
-              messages.push(...loaded.messages);
-            }
-            if (loaded.mode) currentMode = loaded.mode;
-            const tokStr = loaded.tokens?.total ? ` · ${C.gold}⚡ ${loaded.tokens.total.toLocaleString()} tokens consumidos${C.reset}` : '';
-            console.log(`\n  ${C.green}✓ Sesión restaurada con éxito:${C.reset} ${C.bold}${loaded.title}${C.reset} ${C.gray}(${messages.length} msgs${tokStr})${C.reset}\n`);
+            if (Array.isArray(loaded.messages)) messages.push(...loaded.messages);
+            if (loaded.mode) currentMode = normalizeMode(loaded.mode);
+            const tokStr = loaded.tokens?.total ? ` · ${C.gold}${loaded.tokens.total.toLocaleString()} tokens${C.reset}` : '';
+            console.log(`\n  ${C.green}✓ Sesión restaurada:${C.reset} ${C.bold}${loaded.title}${C.reset} ${C.gray}(${messages.length} msgs${tokStr})${C.reset}\n`);
             rl.setPrompt(getPrompt());
           } else {
-            console.log(`\n  ${C.granateBright}✖ No se encontró la sesión con ID o coincidencia:${C.reset} ${targetId}\n`);
+            console.log(`\n  ${C.granateBright}✖ No se encontró la sesión:${C.reset} ${targetId}\n`);
           }
           rl.prompt();
           return;
         }
-
-        // 4. Delete session
-        if (sub === 'delete' || sub === 'rm' || sub === 'drop') {
-          const targetId = parts[2];
-          if (!targetId) {
-            console.log(`\n  ${C.rose}Uso:${C.reset} ${C.bold}/session delete <id_de_sesion>${C.reset}`);
-            console.log(`  ${C.gray}Ejemplo: /session delete ses_20260919_7a1b (o parte del ID)${C.reset}\n`);
-            rl.prompt();
-            return;
-          }
-          const delRes = deleteSession(targetId, process.cwd());
-          if (delRes.success) {
-            console.log(`\n  ${C.green}✓ Sesión eliminada del disco:${C.reset} ${delRes.id}`);
-            if (activeSession && activeSession.id === delRes.id) {
-              activeSession = createSession(process.cwd(), currentMode);
-              messages.length = 0;
-              console.log(`  ${C.cyan}● Como era la sesión activa, se ha iniciado una nueva sesión limpia:${C.reset} ${activeSession.id}\n`);
-            } else {
-              console.log('');
-            }
-          } else {
-            console.log(`\n  ${C.granateBright}✖ No se encontró la sesión para borrar:${C.reset} ${targetId}\n`);
-          }
-          rl.prompt();
-          return;
-        }
-
-        // 5. Session Info & Tokens
-        if (sub === 'info' || sub === 'stats' || sub === 'tokens' || sub === 'token') {
-          console.log(renderSessionInfo(activeSession));
-          rl.prompt();
-          return;
-        }
-
-        // Direct /session <id> shortcut
         const trySession = loadSession(parts[1], process.cwd());
         if (trySession) {
           activeSession = trySession;
           messages.length = 0;
-          if (Array.isArray(trySession.messages)) {
-            messages.push(...trySession.messages);
-          }
-          if (trySession.mode) currentMode = trySession.mode;
+          if (Array.isArray(trySession.messages)) messages.push(...trySession.messages);
+          if (trySession.mode) currentMode = normalizeMode(trySession.mode);
           console.log(`\n  ${C.green}✓ Sesión reanudada:${C.reset} ${C.bold}${trySession.title}${C.reset} ${C.gray}(${messages.length} msgs)${C.reset}\n`);
           rl.setPrompt(getPrompt());
           rl.prompt();
           return;
         }
-
         console.log(`\n${C.granateBold}Gestor de Sesiones (/session):${C.reset}`);
         console.log(`  ${C.white}/session list${C.reset}              Ver todas las sesiones y consumo de tokens`);
         console.log(`  ${C.white}/session new [nombre]${C.reset}      Crear e iniciar una nueva sesión en limpio`);
         console.log(`  ${C.white}/session resume <id>${C.reset}       Cargar y reanudar una sesión guardada`);
         console.log(`  ${C.white}/session delete <id>${C.reset}       Borrar una sesión del almacenamiento local`);
-        console.log(`  ${C.white}/session info${C.reset}              Ver desglose de tokens y métricas de la sesión actual\n`);
+        console.log(`  ${C.white}/session info${C.reset}              Ver desglose de tokens de la sesión actual\n`);
         rl.prompt();
         return;
       }
@@ -352,18 +401,16 @@ async function startRepl(initialConfig) {
         const total = curTokens.total || 0;
         const pct = ((total / maxTokens) * 100).toFixed(2);
         const remaining = Math.max(0, maxTokens - total);
-
         let content = '';
-        content += `${C.white}Motor de Inferencia:${C.reset}     ${C.granateBright}deiza-omniscient${C.reset} ${C.gray}(Liquid 5.1 / Kimi K2.5 · AWS Dedicated)${C.reset}\n`;
-        content += `${C.white}Ventana de Contexto:${C.reset}     ${C.bold}1,000,000 (1M)${C.reset} tokens nativos\n`;
+        content += `${C.white}Motor de Inferencia:${C.reset}     ${C.granateBright}${cfg.isCustomEndpoint ? cfg.model : 'deiza-omniscient'}${C.reset} ${cfg.isCustomEndpoint ? `${C.gray}(${cfg.apiBase})${C.reset}` : `${C.gray}(Liquid 5.1 / Kimi K2.5 · AWS Dedicated)${C.reset}`}\n`;
+        content += `${C.white}Ventana de Contexto:${C.reset}     ${C.bold}1,000,000 (1M)${C.reset} tokens de sesión\n`;
         content += `${C.white}Tokens en Contexto:${C.reset}      ${C.bold}${C.green}${total.toLocaleString()}${C.reset} / 1,000,000 tokens (${pct}% ocupado)\n`;
         content += `${C.white}Capacidad Disponible:${C.reset}    ${C.bold}${remaining.toLocaleString()}${C.reset} tokens libres\n\n`;
         content += `${C.granateBright}── Desglose de la Sesión Activa (${activeSession?.id || 'sesión'}) ──${C.reset}\n`;
-        content += `${C.white}• Prompt (Entrada):${C.reset}         ${C.gold}${curTokens.prompt.toLocaleString()}${C.reset} tokens\n`;
-        content += `${C.white}• Completion (Salida):${C.reset}     ${C.gold}${curTokens.completion.toLocaleString()}${C.reset} tokens\n`;
+        content += `${C.white}• Prompt (Entrada):${C.reset}         ${C.gold}${(curTokens.prompt || 0).toLocaleString()}${C.reset} tokens\n`;
+        content += `${C.white}• Completion (Salida):${C.reset}     ${C.gold}${(curTokens.completion || 0).toLocaleString()}${C.reset} tokens\n`;
         content += `${C.white}• Turnos en Memoria:${C.reset}       ${C.cyan}${messages.length}${C.reset} mensajes activos\n\n`;
-        content += `${C.gray}Comandos rápidos: /clear (vaciar contexto actual) · /session new [nombre] · /usage (cuota 5h)${C.reset}`;
-
+        content += `${C.gray}Comandos rápidos: /clear (vaciar contexto) · /session new [nombre] · /usage (cuota 5h)${C.reset}`;
         console.log(box('Métricas de Contexto y Tokens (Ventana 1M)', content, C.granate));
         rl.prompt();
         return;
@@ -382,8 +429,7 @@ async function startRepl(initialConfig) {
       if (cmd === '/resume') {
         const targetId = parts[1];
         if (!targetId) {
-          const list = listSessions(process.cwd());
-          console.log(renderSessionList(list, activeSession?.id));
+          console.log(renderSessionList(listSessions(process.cwd()), activeSession?.id));
           rl.prompt();
           return;
         }
@@ -391,12 +437,9 @@ async function startRepl(initialConfig) {
         if (loaded) {
           activeSession = loaded;
           messages.length = 0;
-          if (Array.isArray(loaded.messages)) {
-            messages.push(...loaded.messages);
-          }
-          if (loaded.mode) currentMode = loaded.mode;
-          const tokStr = loaded.tokens?.total ? ` · ${C.gold}⚡ ${loaded.tokens.total.toLocaleString()} tokens${C.reset}` : '';
-          console.log(`\n  ${C.green}✓ Conversación reanudada:${C.reset} ${C.bold}${loaded.title}${C.reset} ${C.gray}(${messages.length} mensajes cargados${tokStr})${C.reset}\n`);
+          if (Array.isArray(loaded.messages)) messages.push(...loaded.messages);
+          if (loaded.mode) currentMode = normalizeMode(loaded.mode);
+          console.log(`\n  ${C.green}✓ Conversación reanudada:${C.reset} ${C.bold}${loaded.title}${C.reset} ${C.gray}(${messages.length} mensajes cargados)${C.reset}\n`);
           rl.setPrompt(getPrompt());
         } else {
           console.log(`\n  ${C.granateBright}✖ No se encontró la sesión:${C.reset} ${targetId}\n`);
@@ -406,46 +449,17 @@ async function startRepl(initialConfig) {
       }
 
       if (cmd === '/paste' || cmd === '/clipboard') {
-        console.log(`\n  ${C.cyan}📋 Leyendo captura del portapapeles del sistema operativo...${C.reset}`);
+        console.log(`\n  ${C.cyan}Leyendo captura del portapapeles del sistema...${C.reset}`);
         const clip = getClipboardImage();
         if (!clip.success) {
-          console.log(`  ${C.gold}⚠️  ${clip.error || 'No se encontró imagen en el portapapeles.'}${C.reset}`);
-          console.log(`  ${C.gray}Tip: Toma una captura con Win+Shift+S (Windows), Cmd+Shift+4 (Mac) o PrtScn y vuelve a escribir /paste.${C.reset}\n`);
+          console.log(`  ${C.gold}⚠ ${clip.error || 'No se encontró imagen en el portapapeles.'}${C.reset}`);
+          console.log(`  ${C.gray}Tip: haz una captura con Win+Shift+S (Windows), Cmd+Shift+4 (Mac) o PrtScn y repite /paste.${C.reset}\n`);
           rl.prompt();
           return;
         }
-
-        console.log(`  ${C.green}✓ Imagen del portapapeles capturada:${C.reset} ${clip.imagePath}`);
+        console.log(`  ${C.green}✓ Imagen capturada:${C.reset} ${clip.imagePath}`);
         const promptAfter = parts.slice(1).join(' ') || 'Analiza esta captura de pantalla y relaciónala con el código del proyecto.';
-
-        rl.pause();
-        try {
-          const imgItem = {
-            path: clip.imagePath,
-            data_url: clip.dataUrl,
-            size_bytes: fs.existsSync(clip.imagePath) ? fs.statSync(clip.imagePath).size : 0,
-          };
-          const turnResult = await runAgentTurn({
-            cfg,
-            messages,
-            userInput: promptAfter,
-            rl,
-            confirmCallback: confirmAction,
-            mode: currentMode,
-            images: [imgItem],
-          });
-          updateSessionTitleFromPrompt(activeSession, promptAfter);
-          activeSession.messages = messages;
-          activeSession.mode = currentMode;
-          if (turnResult?.usage) {
-            addSessionTokens(activeSession, turnResult.usage);
-          } else {
-            saveSession(activeSession);
-          }
-        } catch (err) {
-          console.log(Status.error(err.message));
-        }
-        rl.resume();
+        await runTurn(promptAfter, [{ path: clip.imagePath, data_url: clip.dataUrl, size_bytes: fs.existsSync(clip.imagePath) ? fs.statSync(clip.imagePath).size : 0 }]);
         rl.setPrompt(getPrompt());
         rl.prompt();
         return;
@@ -456,22 +470,25 @@ async function startRepl(initialConfig) {
         const task = parts.slice(2).join(' ');
         if (!role || !task) {
           console.log(`\n  ${C.rose}Uso:${C.reset} ${C.bold}/agent <rol> <tarea>${C.reset}`);
-          console.log(`  ${C.gray}Ejemplo: /agent Auditor "Analiza el archivo src/agent.js en busca de fugas"${C.reset}\n`);
+          console.log(`  ${C.gray}Ejemplo: /agent Auditor "Analiza src/agent.js en busca de fugas"${C.reset}\n`);
           rl.prompt();
           return;
         }
-        rl.pause();
+        busy = true;
         try {
-          const result = await Tools.invoke_subagent({ role, task }, { cfg, streamCompletion });
+          const result = await Tools.invoke_subagent({ role, task }, { cfg: { ...cfg, apiKey: cfg.isCustomEndpoint ? cfg.endpointKey : cfg.apiKey }, streamCompletion });
           if (result.report) {
             console.log(`\n${C.granateDark}─────────────────────────────────────────────────────────────${C.reset}`);
             console.log(result.report);
             console.log(`${C.granateDark}─────────────────────────────────────────────────────────────${C.reset}\n`);
+          } else if (result.error) {
+            console.log(Status.error(result.error));
           }
         } catch (err) {
           console.log(Status.error(err.message));
+        } finally {
+          busy = false;
         }
-        rl.resume();
         rl.prompt();
         return;
       }
@@ -480,25 +497,18 @@ async function startRepl(initialConfig) {
         const key = parts[1]?.toLowerCase();
         const val = parts[2];
         if (key === 'endpoint' && val) {
-          cfg.apiBase = val.replace(/\/+$/, '');
-          cfg.isCustomEndpoint = !cfg.apiBase.includes('deiza.org');
-          saveConfig(cfg);
-          console.log(`  ${C.green}✓ Endpoint actualizado a:${C.reset} ${cfg.apiBase}\n`);
-        } else if (key === 'mode' && (val === 'build' || val === 'plan')) {
-          currentMode = val;
-          cfg.defaultMode = val;
-          saveConfig(cfg);
-          console.log(`  ${C.green}✓ Modo por defecto guardado en ${val.toUpperCase()}${C.reset}\n`);
-          rl.setPrompt(getPrompt());
+          applyEndpoint(val);
+        } else if (key === 'mode' && MODES.includes((val || '').toLowerCase())) {
+          setMode(val, { persist: true });
         } else {
           console.log(`\n${C.granateDark}┌─ ${C.bold}${C.granateBright}Configuración Local Deiza Code${C.reset} ${C.granateDark}${'─'.repeat(25)}┐${C.reset}`);
           console.log(`  ${C.granateDark}│${C.reset}  ${C.white}Ruta de configuración:${C.reset}  ${C.gray}~/.deiza/config.json${C.reset}`);
-          console.log(`  ${C.granateDark}│${C.reset}  ${C.white}Endpoint API:${C.reset}           ${C.gray}${cfg.apiBase}${C.reset}`);
-          console.log(`  ${C.granateDark}│${C.reset}  ${C.white}Modelo por defecto:${C.reset}     ${C.gray}${cfg.model}${C.reset}`);
-          console.log(`  ${C.granateDark}│${C.reset}  ${C.white}Modo actual:${C.reset}            ${currentMode === 'plan' ? `${C.cyan}[PLAN]` : `${C.rose}[BUILD]`}${C.reset}`);
-          console.log(`  ${C.granateDark}│${C.reset}  ${C.white}Cuenta conectada:${C.reset}       ${C.gray}${cfg.email || 'No iniciada'}${C.reset}`);
+          console.log(`  ${C.granateDark}│${C.reset}  ${C.white}Cuenta Deiza:${C.reset}           ${C.gray}${cfg.email || 'No iniciada'} [${String(cfg.plan || '').toUpperCase()}]${C.reset}`);
+          console.log(`  ${C.granateDark}│${C.reset}  ${C.white}Motor / endpoint:${C.reset}       ${C.gray}${cfg.isCustomEndpoint ? cfg.apiBase : 'Deiza (nativo)'}${C.reset}`);
+          console.log(`  ${C.granateDark}│${C.reset}  ${C.white}Modelo:${C.reset}                 ${C.gray}${cfg.model}${C.reset}`);
+          console.log(`  ${C.granateDark}│${C.reset}  ${C.white}Modo actual:${C.reset}            ${modeBadge(currentMode)} ${C.gray}(por defecto: ${cfg.defaultMode || 'build'})${C.reset}`);
           console.log(`${C.granateDark}└────────────────────────────────────────────────────────────┘${C.reset}`);
-          console.log(`  ${C.gray}Ajusta valores con: /config endpoint <url> o /config mode <build|plan>${C.reset}\n`);
+          console.log(`  ${C.gray}Ajusta valores con: /config endpoint <url|deiza> · /config mode <build|copilot|plan>${C.reset}\n`);
         }
         rl.prompt();
         return;
@@ -507,68 +517,34 @@ async function startRepl(initialConfig) {
       if (cmd === '/update') {
         console.log(`\n  ${C.gray}Comprobando actualizaciones de Deiza Code...${C.reset}`);
         const remoteVer = await checkLatestVersion();
-        const localVer = VERSION;
-
         if (!remoteVer) {
-          console.log(`  ${C.gold}ℹ No se pudo contactar el servidor de versiones. Descargando instalador oficial...${C.reset}`);
-        } else if (remoteVer.version === localVer) {
-          console.log(`  ${C.green}✓ Ya estás en la versión más reciente de Deiza Code (v${localVer}).${C.reset}\n`);
+          console.log(`  ${C.gold}No se pudo contactar con el servidor de versiones. Se descargará el instalador oficial.${C.reset}`);
+        } else if (!isNewerVersion(remoteVer.version, VERSION)) {
+          console.log(`  ${C.green}✓ Ya estás en la versión más reciente de Deiza Code (v${VERSION}).${C.reset}\n`);
           rl.prompt();
           return;
         } else {
-          console.log(`  ${C.cyan}● Nueva versión detectada:${C.reset} ${C.white}v${localVer}${C.reset} ➜ ${C.bold}${C.green}v${remoteVer.version}${C.reset}`);
+          console.log(`  ${C.cyan}● Nueva versión detectada:${C.reset} ${C.white}v${VERSION}${C.reset} ➜ ${C.bold}${C.green}v${remoteVer.version}${C.reset}`);
           if (remoteVer.notes) console.log(`  ${C.gray}Novedades: ${remoteVer.notes}${C.reset}`);
         }
-
-        const approved = await confirmAction('¿Deseas descargar e instalar la actualización ahora? [S/n]: ');
+        busy = true;
+        const approved = await confirmAction('¿Descargar e instalar la actualización ahora? [S/n]: ');
         if (!approved) {
+          busy = false;
           console.log(`  ${C.gray}Actualización cancelada.${C.reset}\n`);
           rl.prompt();
           return;
         }
-
-        console.log(`\n  ${C.granateBright}●${C.reset} ${C.white}Actualizando Deiza Code en tu sistema...${C.reset}`);
-        rl.pause();
+        console.log(`\n  ${C.granateBright}●${C.reset} ${C.white}Actualizando Deiza Code...${C.reset}`);
         try {
           await runAutoUpdate();
-          console.log(`  ${C.green}✓ ¡Deiza Code actualizado con éxito!${C.reset}`);
-          console.log(`  ${C.gray}Reinicia tu terminal o ejecuta 'deiza' para disfrutar de la nueva versión.${C.reset}\n`);
+          console.log(`  ${C.green}✓ Deiza Code actualizado.${C.reset}`);
+          console.log(`  ${C.gray}Reinicia la terminal o ejecuta 'deiza' de nuevo para usar la nueva versión.${C.reset}\n`);
         } catch (err) {
           console.log(Status.error(`Error durante la actualización: ${err.message}`));
+        } finally {
+          busy = false;
         }
-        rl.resume();
-        rl.prompt();
-        return;
-      }
-
-      if (cmd === '/mode') {
-        const target = (parts[1] || '').toLowerCase();
-        if (target === 'plan') {
-          currentMode = 'plan';
-        } else if (target === 'build') {
-          currentMode = 'build';
-        } else {
-          currentMode = currentMode === 'build' ? 'plan' : 'build';
-        }
-        const badge = currentMode === 'plan' ? `${C.cyan}[PLAN]${C.reset}` : `${C.rose}[BUILD]${C.reset}`;
-        console.log(`  ${C.green}✓ Modo cambiado a ${badge}${C.reset}: ${currentMode === 'plan' ? 'Solo lectura, análisis y arquitectura.' : 'Implementación completa con edición de código.'}\n`);
-        rl.setPrompt(getPrompt());
-        rl.prompt();
-        return;
-      }
-
-      if (cmd === '/plan') {
-        currentMode = 'plan';
-        console.log(`  ${C.cyan}● Modo PLAN activado:${C.reset} Análisis, inspección y arquitectura sin modificar archivos.\n`);
-        rl.setPrompt(getPrompt());
-        rl.prompt();
-        return;
-      }
-
-      if (cmd === '/build') {
-        currentMode = 'build';
-        console.log(`  ${C.rose}● Modo BUILD activado:${C.reset} Edición quirúrgica de código, tests y ejecución de comandos.\n`);
-        rl.setPrompt(getPrompt());
         rl.prompt();
         return;
       }
@@ -586,32 +562,9 @@ async function startRepl(initialConfig) {
           rl.prompt();
           return;
         }
-        const promptAfterImage = parts.slice(2).join(' ') || 'Analiza esta imagen y describe las acciones arquitectónicas o de interfaz necesarias en el código.';
-        console.log(`  ${C.cyan}👁 Imagen cargada:${C.reset} ${imagePath} (${Math.round(imgResult.size_bytes / 1024)} KB)`);
-
-        rl.pause();
-        try {
-          const turnResult = await runAgentTurn({
-            cfg,
-            messages,
-            userInput: promptAfterImage,
-            rl,
-            confirmCallback: confirmAction,
-            mode: currentMode,
-            images: [imgResult],
-          });
-          updateSessionTitleFromPrompt(activeSession, promptAfterImage);
-          activeSession.messages = messages;
-          activeSession.mode = currentMode;
-          if (turnResult?.usage) {
-            addSessionTokens(activeSession, turnResult.usage);
-          } else {
-            saveSession(activeSession);
-          }
-        } catch (err) {
-          console.log(Status.error(err.message));
-        }
-        rl.resume();
+        const promptAfterImage = parts.slice(2).join(' ') || 'Analiza esta imagen y describe las acciones necesarias en el código.';
+        console.log(`  ${C.cyan}Imagen cargada:${C.reset} ${imagePath} (${Math.round(imgResult.size_bytes / 1024)} KB)`);
+        await runTurn(promptAfterImage, [imgResult]);
         rl.setPrompt(getPrompt());
         rl.prompt();
         return;
@@ -620,76 +573,58 @@ async function startRepl(initialConfig) {
       if (cmd === '/model' || cmd === '/models') {
         const targetModel = parts[1]?.trim();
         if (!cfg.isCustomEndpoint) {
-          if (targetModel) {
-            const VALID_DEIZA_MODELS = ['deiza-omniscient'];
-            if (!VALID_DEIZA_MODELS.includes(targetModel.toLowerCase())) {
-              console.log(`\n  ${C.granateBright}✖ Modelo no válido:${C.reset} "${targetModel}"`);
-              console.log(`  En el cluster nativo de Deiza, el único motor oficial disponible es: ${C.bold}deiza-omniscient${C.reset}`);
-              console.log(`  ${C.gray}Motor: Liquid 5.1 / Kimi K2.5 · 1,000,000 (1M) Tokens de Context Window en AWS dedicado.${C.reset}`);
-              console.log(`  ${C.gray}Para usar otros modelos locales o de terceros (OpenAI, Ollama, vLLM), configura un endpoint con: /endpoint <url>${C.reset}\n`);
-              rl.prompt();
-              return;
-            } else {
-              activeModel = 'deiza-omniscient';
-              cfg.model = activeModel;
-              saveConfig(cfg);
-              console.log(`  ${C.green}✓ Modelo establecido en ${C.bold}${activeModel}${C.reset} (AWS Dedicated K2.5 · 1M Context Window)\n`);
-              rl.prompt();
-              return;
-            }
-          }
-          console.log(`\n${C.granateBold}Motor Dedicado en Deiza Code:${C.reset}`);
-          console.log(`  ${C.green}●${C.reset} ${C.bold}deiza-omniscient${C.reset} (Liquid 5.1 · Kimi K2.5 Architecture)`);
-          console.log(`    ${C.gray}Infraestructura:${C.reset}   Amazon AWS Dedicated High-Compute Clusters`);
-          console.log(`    ${C.gray}Ventana Contexto:${C.reset} 1,000,000 (1M) Tokens nativos`);
-          console.log(`    ${C.gray}Especialidad:${C.reset}     Diffs quirúrgicos en línea, multiagentes y ejecución autónoma`);
-          console.log(`    ${C.gray}Estado:${C.reset}           Motor exclusivo oficial en Deiza Code.\n`);
-        } else {
-          if (targetModel) {
-            activeModel = targetModel;
-            cfg.model = activeModel;
-            saveConfig(cfg);
-            console.log(`  ${C.green}✓ Modelo cambiado a ${C.bold}${activeModel}${C.reset}\n`);
+          if (targetModel && targetModel.toLowerCase() !== DEFAULT_MODEL) {
+            console.log(`\n  ${C.granateBright}✖ Modelo no válido:${C.reset} "${targetModel}"`);
+            console.log(`  En el motor nativo de Deiza el único modelo disponible es ${C.bold}deiza-omniscient${C.reset}.`);
+            console.log(`  ${C.gray}Para usar modelos locales o de terceros (Ollama, vLLM, OpenAI): /endpoint <url>${C.reset}\n`);
           } else {
-            console.log(`\n  ${C.gray}Usa: /model <id> para cambiar el modelo en tu endpoint custom.${C.reset}\n`);
+            cfg.model = DEFAULT_MODEL;
+            saveConfig(cfg);
+            console.log(`\n${C.granateBold}Motor dedicado de Deiza Code:${C.reset}`);
+            console.log(`  ${C.green}●${C.reset} ${C.bold}deiza-omniscient${C.reset} (Liquid 5.1 · Kimi K2.5)`);
+            console.log(`    ${C.gray}Infraestructura:${C.reset}  Amazon AWS Dedicated High-Compute Clusters`);
+            console.log(`    ${C.gray}Especialidad:${C.reset}    Diffs quirúrgicos, multiagentes, visión y ejecución autónoma\n`);
           }
+        } else if (targetModel) {
+          cfg.model = targetModel;
+          cfg.endpointModel = targetModel;
+          saveConfig(cfg);
+          console.log(`  ${C.green}✓ Modelo del endpoint cambiado a ${C.bold}${targetModel}${C.reset}\n`);
+        } else {
+          console.log(`\n  ${C.white}Modelo actual:${C.reset} ${cfg.model} ${C.gray}(endpoint ${cfg.apiBase})${C.reset}`);
+          console.log(`  ${C.gray}Usa /model <id> para cambiarlo, o /endpoint deiza para volver al motor nativo.${C.reset}\n`);
         }
         rl.prompt();
         return;
       }
 
       if (cmd === '/endpoint') {
-        const targetEndpoint = parts[1];
-        if (targetEndpoint) {
-          cfg.apiBase = targetEndpoint.replace(/\/+$/, '');
-          cfg.isCustomEndpoint = !cfg.apiBase.includes('deiza.org');
-          saveConfig(cfg);
-          console.log(`  ${C.green}✓ Endpoint actualizado a:${C.reset} ${cfg.apiBase}\n`);
+        const target = parts[1];
+        if (target) {
+          applyEndpoint(target, parts[2]);
         } else {
-          console.log(`\n${C.granateBold}Configuración de Endpoint:${C.reset}`);
-          console.log(`  Endpoint actual: ${C.white}${cfg.apiBase}${C.reset}`);
-          console.log(`  Nativo Deiza:    https://deiza.org`);
-          console.log(`  Ollama Local:    http://127.0.0.1:11434`);
-          console.log(`  vLLM / LMStudio: http://127.0.0.1:8000\n`);
-          console.log(`  ${C.gray}Usa: /endpoint <url> para cambiarlo.${C.reset}\n`);
+          console.log(`\n${C.granateBold}Motor de inferencia:${C.reset}`);
+          console.log(`  Actual:          ${C.white}${cfg.isCustomEndpoint ? cfg.apiBase : 'Deiza (nativo, deiza-omniscient)'}${C.reset}`);
+          console.log(`  Ollama local:    /endpoint http://127.0.0.1:11434 llama3`);
+          console.log(`  vLLM / LMStudio: /endpoint http://127.0.0.1:8000/v1 <modelo>`);
+          console.log(`  Volver a Deiza:  /endpoint deiza\n`);
+          console.log(`  ${C.gray}Tu cuenta de Deiza sigue siendo necesaria; solo cambia el motor que responde.${C.reset}\n`);
         }
         rl.prompt();
         return;
       }
 
       if (cmd === '/usage') {
-        const currentUsage = await fetchUsage(cfg.apiKey, cfg.apiBase);
+        const currentUsage = await fetchUsage(cfg.apiKey, cfg.accountBase);
         if (!currentUsage) {
-          console.log(`  ${C.gray}Endpoint personalizado o información de uso no disponible.${C.reset}\n`);
+          console.log(`  ${C.gray}No se pudo obtener la información de uso (¿sin conexión?).${C.reset}\n`);
         } else {
-          const usedPct = currentUsage.token_limit > 0
-            ? Math.round((currentUsage.tokens_used / currentUsage.token_limit) * 100)
-            : 0;
+          const usedPct = currentUsage.token_limit > 0 ? Math.round((currentUsage.tokens_used / currentUsage.token_limit) * 100) : 0;
           const mins = currentUsage.reset_in_seconds ? Math.ceil(currentUsage.reset_in_seconds / 60) : 0;
-          console.log(`\n${C.granateBold}Estado de Uso de tu Plan:${C.reset}`);
-          console.log(`  Plan:              ${C.bold}${currentUsage.plan.toUpperCase()}${C.reset}`);
-          console.log(`  Tokens utilizados: ${currentUsage.tokens_used.toLocaleString()} / ${currentUsage.token_limit.toLocaleString()} (${usedPct}%)`);
-          console.log(`  Ventana de uso:    ${mins > 0 ? `Se reinicia en ${Math.floor(mins / 60)}h ${mins % 60}m` : '0% (se iniciará al enviar un mensaje)'}\n`);
+          console.log(`\n${C.granateBold}Estado de uso de tu plan:${C.reset}`);
+          console.log(`  Plan:              ${C.bold}${String(currentUsage.plan).toUpperCase()}${C.reset}`);
+          console.log(`  Tokens utilizados: ${(currentUsage.tokens_used || 0).toLocaleString()} / ${(currentUsage.token_limit || 0).toLocaleString()} (${usedPct}%)`);
+          console.log(`  Ventana de uso:    ${mins > 0 ? `Se reinicia en ${Math.floor(mins / 60)}h ${mins % 60}m` : 'Sin consumo en la ventana actual'}\n`);
         }
         rl.prompt();
         return;
@@ -702,7 +637,7 @@ async function startRepl(initialConfig) {
           fs.writeFileSync(rulesPath, template, 'utf-8');
           console.log(`  ${C.green}✓ Creado archivo .deizarules en ${rulesPath}${C.reset}\n`);
         } else {
-          console.log(`  ${C.gold}ℹ El archivo .deizarules ya existe en este proyecto.${C.reset}\n`);
+          console.log(`  ${C.gold}El archivo .deizarules ya existe en este proyecto.${C.reset}\n`);
         }
         rl.prompt();
         return;
@@ -710,10 +645,7 @@ async function startRepl(initialConfig) {
 
       if (cmd === '/clear') {
         messages.length = 0;
-        if (activeSession) {
-          activeSession.messages = [];
-          saveSession(activeSession);
-        }
+        if (activeSession) { activeSession.messages = []; saveSession(activeSession); }
         console.clear();
         console.log(`  ${C.green}✓ Contexto de conversación limpiado.${C.reset}\n`);
         rl.prompt();
@@ -721,21 +653,17 @@ async function startRepl(initialConfig) {
       }
 
       if (cmd === '/login') {
-        try {
-          cfg = await runLoginFlow(cfg);
-        } catch (err) {
-          console.log(Status.error(err.message));
-        }
+        await doLogin(true);
         rl.prompt();
         return;
       }
 
       if (cmd === '/logout') {
-        cfg.apiKey = '';
-        cfg.email = '';
-        cfg.plan = 'free';
+        cfg = { ...cfg, apiKey: '', email: '', name: '', plan: '', usage: null };
         saveConfig(cfg);
-        console.log(`  ${C.green}✓ Sesión cerrada con éxito. Credenciales locales eliminadas de ~/.deiza/config.json${C.reset}\n`);
+        console.log(`  ${C.green}✓ Sesión cerrada. Credenciales eliminadas de ~/.deiza/config.json${C.reset}`);
+        console.log(`  ${C.gray}Deiza Code necesita una cuenta para funcionar: inicia sesión de nuevo o cierra con /exit.${C.reset}`);
+        await doLogin(true);
         rl.prompt();
         return;
       }
@@ -745,18 +673,17 @@ async function startRepl(initialConfig) {
         return;
       }
 
-      console.log(`  ${C.granateBright}Comando desconocido:${C.reset} ${cmd}. Escribe / para ver la lista de comandos disponibles.\n`);
+      console.log(`  ${C.granateBright}Comando desconocido:${C.reset} ${cmd}. Escribe / para ver la lista de comandos.\n`);
       rl.prompt();
       return;
     }
 
-    // Check if input contains an image file path (from CMD drag-and-drop or pasting "C:\path\img.png")
+    // Image path pasted or dragged into the terminal
     const imgDetection = detectImageInText(input);
-    let runImages = [];
+    const runImages = [];
     let effectiveInput = input;
-
     if (imgDetection.hasImage) {
-      console.log(`  ${C.cyan}👁 Imagen detectada en el comando:${C.reset} ${imgDetection.imagePath}`);
+      console.log(`  ${C.cyan}Imagen detectada:${C.reset} ${imgDetection.imagePath}`);
       runImages.push({
         path: imgDetection.imagePath,
         data_url: imgDetection.dataUrl,
@@ -765,39 +692,34 @@ async function startRepl(initialConfig) {
       effectiveInput = imgDetection.promptText;
     }
 
-    // Process user coding instruction
-    rl.pause();
-    try {
-      const turnResult = await runAgentTurn({
-        cfg,
-        messages,
-        userInput: effectiveInput,
-        rl,
-        confirmCallback: confirmAction,
-        mode: currentMode,
-        images: runImages,
-      });
-      updateSessionTitleFromPrompt(activeSession, effectiveInput);
-      activeSession.messages = messages;
-      activeSession.mode = currentMode;
-      if (turnResult?.usage) {
-        addSessionTokens(activeSession, turnResult.usage);
-      } else {
-        saveSession(activeSession);
-      }
-    } catch (err) {
-      if (err.message === 'AUTH_EXPIRED') {
-        console.log(Status.error('Tu sesión ha expirado o la clave es inválida. Ejecuta /login para reconectar.'));
-      } else if (err.message === 'USAGE_LIMIT_EXCEEDED') {
-        console.log(Status.error('Has alcanzado el límite de uso de tu plan. Consulta /usage para ver cuándo se reinicia.'));
-      } else {
-        console.log(Status.error(err.message));
-      }
-    }
-    rl.resume();
+    await runTurn(effectiveInput, runImages);
     rl.setPrompt(getPrompt());
     rl.prompt();
   });
+
+  function applyEndpoint(target, modelArg) {
+    const t = String(target || '').trim().toLowerCase();
+    if (t === 'deiza' || t === 'reset' || t === 'native' || t === 'nativo' || isDeizaHost(target)) {
+      cfg.endpoint = '';
+      cfg.apiBase = cfg.accountBase;
+      cfg.isCustomEndpoint = false;
+      cfg.model = DEFAULT_MODEL;
+      saveConfig(cfg);
+      console.log(`  ${C.green}✓ Motor nativo de Deiza restaurado (deiza-omniscient).${C.reset}\n`);
+      return;
+    }
+    let url = normalizeUrl(target);
+    if (!/^https?:\/\//i.test(url)) url = `http://${url}`;
+    try { new URL(url); } catch { console.log(Status.error(`URL no válida: ${target}`)); return; }
+    cfg.endpoint = url;
+    cfg.apiBase = url;
+    cfg.isCustomEndpoint = true;
+    if (modelArg) cfg.endpointModel = modelArg;
+    cfg.model = cfg.endpointModel || 'default';
+    saveConfig(cfg);
+    console.log(`  ${C.green}✓ Endpoint actualizado a:${C.reset} ${cfg.apiBase} ${C.gray}(modelo: ${cfg.model})${C.reset}`);
+    console.log(`  ${C.gray}Si el servidor requiere clave: DEIZA_ENDPOINT_KEY o deiza --endpoint <url> --key <clave>.${C.reset}\n`);
+  }
 
   rl.on('close', () => {
     console.log(`\n${C.gray}Sesión finalizada.${C.reset}\n`);
@@ -807,4 +729,6 @@ async function startRepl(initialConfig) {
 
 module.exports = {
   startRepl,
+  checkLatestVersion,
+  isNewerVersion,
 };

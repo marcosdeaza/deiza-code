@@ -5,13 +5,21 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
+
+const GIT_OPTS = { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true, timeout: 4000 };
+
+function gitOut(args) {
+  // stderr is discarded through stdio, never through a shell redirection: CMD has no
+  // /dev/null and prints "El sistema no puede encontrar la ruta especificada".
+  return execFileSync('git', args, GIT_OPTS).trim();
+}
 
 function getGitContext() {
   try {
-    const branch = execSync('git rev-parse --abbrev-ref HEAD 2>/dev/null', { encoding: 'utf-8' }).trim();
-    const status = execSync('git status --short 2>/dev/null', { encoding: 'utf-8' }).trim();
-    const remotes = execSync('git remote -v 2>/dev/null', { encoding: 'utf-8' }).trim();
+    const branch = gitOut(['rev-parse', '--abbrev-ref', 'HEAD']);
+    const status = gitOut(['status', '--short']);
+    const remotes = gitOut(['remote', '-v']);
     return {
       isGit: true,
       branch,

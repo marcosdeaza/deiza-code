@@ -39,7 +39,7 @@ Impulsado en exclusiva por el modelo **Deiza Omniscient (Liquid 5.1)**, conectad
 
 ## 🔄 Reciclaje Universal: Usa Cualquier IA
 
-Puedes reutilizar Deiza Code para **cualquier modelo o proveedor LLM** que soporte la especificación estándar OpenAI `/chat/completions`:
+Deiza Code siempre arranca con tu **cuenta de Deiza** (plan Friend o Signet). Una vez dentro, puedes cambiar el motor que responde por **cualquier modelo o proveedor** que soporte la especificación estándar OpenAI `/chat/completions`:
 
 ### 1. Con Ollama en local (DeepSeek-Coder, Llama 3, Qwen)
 ```bash
@@ -47,16 +47,12 @@ Puedes reutilizar Deiza Code para **cualquier modelo o proveedor LLM** que sopor
 ollama run deepseek-coder-v2
 
 # Lanza Deiza Code apuntando a tu instancia local:
-deiza --endpoint http://localhost:11434/v1 --model deepseek-coder-v2
+deiza --endpoint http://localhost:11434 --model deepseek-coder-v2
 ```
 
-### 2. Con OpenAI o Proxies Compatibles
+### 2. Con OpenAI o proxies compatibles
 ```bash
-export OPENAI_BASE_URL="https://api.openai.com/v1"
-export OPENAI_API_KEY="sk-..."
-export MODEL="gpt-4o"
-
-deiza
+deiza --endpoint https://api.openai.com/v1 --model gpt-4o --key sk-...
 ```
 
 ### 3. Con vLLM, LM Studio o LocalAI
@@ -64,18 +60,22 @@ deiza
 deiza --endpoint http://localhost:8000/v1 --model mistral-7b-instruct
 ```
 
-### 4. Volver al Endpoint Oficial de Deiza
+### 4. Volver al motor oficial de Deiza
 ```bash
-deiza --endpoint https://deiza.org
+deiza --endpoint deiza
+# o dentro de la terminal: /endpoint deiza
 ```
+
+> Variables de entorno soportadas: `DEIZA_ENDPOINT`, `DEIZA_ENDPOINT_KEY`, `DEIZA_MODEL`, `DEIZA_API_KEY`. Las variables genéricas `OPENAI_BASE_URL` / `OPENAI_API_KEY` de otras herramientas se ignoran a propósito.
 
 ---
 
 ## ⚡ Características Principales
 
-- **Modos Duales: BUILD y PLAN:**
-  - **Modo BUILD:** Edición quirúrgica activa de código, diffs visuales y tests activos.
-  - **Modo PLAN:** Exploración arquitectónica segura sin mutar el sistema de archivos, formulando blueprints paso a paso antes de aplicar cambios.
+- **Tres modos de permisos: BUILD, COPILOT y PLAN:**
+  - **BUILD (por defecto):** autónomo. Edita archivos, ejecuta comandos, instala dependencias y verifica sin pedir permiso. Solo se bloquean comandos catastróficos (borrar el disco, formatear, apagar la máquina).
+  - **COPILOT:** supervisado. Cada edición se muestra como diff y cada comando se anuncia antes de ejecutarse; tú apruebas o rechazas cambio a cambio.
+  - **PLAN:** solo lectura. Explora el código y produce un plan de implementación que luego ejecutas con `/build` o `/copilot`.
 - **Persistencia de Conversaciones y Sesiones:** Guarda automáticamente el contexto completo por proyecto en `~/.deiza/sessions/`. Permite listar sesiones pasadas (`/history`), reanudarlas en cualquier momento (`/resume [id]`) o iniciar limpias (`/new`).
 - **Soporte de Imágenes y Capturas en Windows CMD y Terminales:**
   - **Detección Automática de Rutas:** Si arrastras o pegas la ruta de una imagen en el CMD (ej: `"C:\path\screenshot.png"`), Deiza Code la detecta al vuelo, la convierte a base64 y la adjunta al modelo multimodal.
@@ -92,9 +92,9 @@ deiza --endpoint https://deiza.org
   - `run_command`: Ejecución de comandos en bash con captura de salida y errores.
   - `invoke_subagent`: Delegación concurrente de subtareas a subagentes de soporte.
   - `view_image`: Análisis visual multimodal de maquetas e interfaces.
-- **Guardas de Seguridad:** Pide confirmación interactiva `[s/N]` antes de ejecutar comandos potencialmente destructivos (`rm -rf`, `git reset --hard`, etc.). Puedes usar `--yes` para automatizar pipelines CI/CD.
+- **Guardas de Seguridad:** en COPILOT se aprueba cada cambio; en cualquier modo los comandos que destruirían el sistema (`rm -rf /`, `mkfs`, `format C:`, apagar la máquina) se rechazan siempre.
 - **Detección Automática de Contexto:** Al arrancar en cualquier proyecto, detecta el branch de Git, archivos modificados, estructura de directorios y directivas (`.deizarules` o `CLAUDE.md`).
-- **Autenticación en 1 Clic:** Levanta un callback loopback local en `127.0.0.1:54321` y abre el navegador para vincular tu cuenta al instante.
+- **Autenticación en 1 Clic:** levanta un callback loopback local en `127.0.0.1:54321` (o un puerto libre) y abre el navegador para vincular tu cuenta al instante. La sesión se revalida en cada arranque: sin cuenta o con plan Free, Deiza Code no arranca.
 - **Estética Granate Profesional (`#8C2F39`):** Interfaz sobria, minimalista, con tipografía limpia y sin elementos innecesarios.
 
 ---
@@ -135,9 +135,10 @@ npm install -g deiza-code
 | Comando | Descripción |
 | :--- | :--- |
 | `/` | Despliega la paleta interactiva de comandos en vivo |
-| `/plan [query]` | Activa el modo PLAN (inspección arquitectónica y blueprint sin modificar archivos) |
-| `/build [query]` | Activa el modo BUILD (edición quirúrgica, diffs visuales y tests activos) |
-| `/mode [plan\|build]` | Alterna rápidamente entre modo BUILD y PLAN |
+| `/build [query]` | Modo BUILD (por defecto): autónomo, sin pedir permisos |
+| `/copilot [query]` | Modo COPILOT: revisa y aprueba cada cambio y comando |
+| `/plan [query]` | Modo PLAN: análisis y plan de implementación sin tocar archivos |
+| `/mode [build\|copilot\|plan]` | Ver o cambiar el modo de permisos activo |
 | `/history` | Ver historial de conversaciones y sesiones guardadas en este proyecto |
 | `/resume [id]` | Continuar una conversación guardada restaurando todo su contexto previo |
 | `/new` | Iniciar una nueva conversación limpia en este workspace |
@@ -149,7 +150,7 @@ npm install -g deiza-code
 | `/model [id]` | Consulta o cambia el modelo en caliente |
 | `/usage` | Consulta el consumo de tokens y la cuenta atrás de la ventana de 5 horas |
 | `/config` | Consulta o ajusta opciones locales (`~/.deiza/config.json`) |
-| `/endpoint [url]` | Conecta a otro endpoint de IA (Ollama, OpenAI, vLLM) |
+| `/endpoint [url\|deiza]` | Usa otro motor OpenAI-compatible (Ollama, OpenAI, vLLM) o vuelve a Deiza |
 | `/init` | Crea un archivo de directivas `.deizarules` en la raíz de tu proyecto |
 | `/clear` | Limpia el historial de la conversación actual |
 | `/login` | Inicia sesión con selector interactivo (Navegador Web 1-Clic o API Key directa) |
@@ -174,15 +175,20 @@ Uso:
   deiza [opciones] [instrucción]
   deiza-code [opciones] [instrucción]
 
+Modos de permisos:
+  --build               Autónomo (por defecto): edita, ejecuta y verifica sin pedir permiso
+  --copilot             Supervisado: cada cambio y comando se muestra y se aprueba
+  --plan                Solo lectura: analiza y propone un plan sin tocar archivos
+
 Opciones:
   -v, --version         Muestra la versión instalada
   -h, --help            Muestra este mensaje de ayuda
-  -p, --prompt <texto>  Ejecuta una instrucción directa en modo headless
-  -y, --yes             Aprueba automáticamente comandos bash sin preguntar
-  --login               Fuerza autenticación por navegador en deiza.org
-  --model <id>          Modelo a utilizar (ej. deiza-liquid-5, llama3, gpt-4o)
-  --endpoint <url>      URL base del servidor de IA
-  --key <apiKey>        Clave API para la sesión
+  -p, --prompt <texto>  Ejecuta una instrucción directa en modo no interactivo
+  --login               Vuelve a iniciar sesión con tu cuenta de Deiza
+  --logout              Cierra la sesión guardada en esta máquina
+  --endpoint <url>      Motor OpenAI-compatible alternativo (Ollama, vLLM, OpenAI...)
+  --model <id>          Modelo del endpoint alternativo
+  --key <apiKey>        Clave del endpoint alternativo (si la requiere)
 ```
 
 ---

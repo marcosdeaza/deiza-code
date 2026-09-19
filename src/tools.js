@@ -8,20 +8,74 @@ const path = require('path');
 const { exec } = require('child_process');
 const { renderDiff, Status } = require('./ui');
 
-// Dangerous command patterns requiring explicit user confirmation
+// Commands that destroy data: COPILOT mode asks before running them, BUILD mode runs them
+// (it is the autonomous mode) except the catastrophic ones below, which are never executed.
 const RISKY_PATTERNS = [
-  /\brm\s+(-rf|-fr|-r)\b/i,
+  /\brm\s+(-[a-z]*r[a-z]*f|-[a-z]*f[a-z]*r|-r)\b/i,
   /\bgit\s+reset\s+--hard\b/i,
-  /\bgit\s+clean\s+-fd\b/i,
-  /\bdrop\s+database\b/i,
+  /\bgit\s+clean\s+-[a-z]*f/i,
+  /\bgit\s+push\s+.*--force\b/i,
+  /\bdrop\s+(database|table)\b/i,
   /\btruncate\s+table\b/i,
   /\bmkfs\b/i,
   /\bdd\s+if=/i,
   /:>\s*\//,
+  /\b(rmdir|rd)\s+\/s\b/i,
+  /\bdel\s+.*\/[sq]\b/i,
+];
+
+// Never run, in any mode: wiping the machine, the disk or the whole home directory.
+const CATASTROPHIC_PATTERNS = [
+  /\brm\s+-[a-z]*r[a-z]*\s+(\/|\/\*|~|~\/|\$HOME|\/home|\/Users|\/etc|\/usr|\/var|\/boot)(\s|$)/i,
+  /\brm\s+-[a-z]*r[a-z]*\s+--no-preserve-root/i,
+  /\bmkfs(\.[a-z0-9]+)?\s+\/dev\//i,
+  /\bdd\s+.*of=\/dev\/(sd|nvme|disk|hd|mmcblk)/i,
+  /:\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;/,
+  /\bformat\s+[a-z]:/i,
+  /\b(rd|rmdir)\s+\/s\s+\/q\s+[a-z]:\\?(\s|$)/i,
+  /\bshutdown\b|\breboot\b|\bhalt\b|\bpoweroff\b/i,
 ];
 
 function isCommandRisky(command) {
-  return RISKY_PATTERNS.some(p => p.test(command));
+  return RISKY_PATTERNS.some(p => p.test(command || ''));
+}
+
+function isCommandCatastrophic(command) {
+  return CATASTROPHIC_PATTERNS.some(p => p.test(command || ''));
+}
+
+/**
+ * COPILOT previews: compute what a tool WOULD change without touching the disk.
+ * Returns { ok, diff, error } so the user can approve the exact change.
+ */
+function previewChange(name, args = {}) {
+  try {
+    if (name === 'write_file') {
+      const fullPath = path.resolve(process.cwd(), args.path || '');
+      const existed = fs.existsSync(fullPath);
+      const oldContent = existed ? fs.readFileSync(fullPath, 'utf-8') : '';
+      const content = String(args.content ?? '');
+      if (!existed) {
+        const lines = content.split('\n');
+        const shown = lines.slice(0, 40).map(l => `  \x1b[38;2;60;180;110m+ ${l}\x1b[0m`).join('\n');
+        const more = lines.length > 40 ? `\n  \x1b[38;2;130;130;140m... (${lines.length - 40} líneas más)\x1b[0m` : '';
+        return { ok: true, diff: `\n  \x1b[1mNuevo archivo:\x1b[0m ${args.path} (${lines.length} líneas)\n${shown}${more}\n` };
+      }
+      return { ok: true, diff: renderDiff(args.path, oldContent, content) };
+    }
+    if (name === 'edit_file') {
+      const fullPath = path.resolve(process.cwd(), args.path || '');
+      if (!fs.existsSync(fullPath)) return { ok: false, error: `File not found: ${args.path}` };
+      const content = fs.readFileSync(fullPath, 'utf-8');
+      const oldStr = String(args.old_string ?? '');
+      if (!content.includes(oldStr)) return { ok: false, error: `Could not find exact text match in ${args.path}.` };
+      if (content.split(oldStr).length - 1 > 1) return { ok: false, error: 'Target string is not unique.' };
+      return { ok: true, diff: renderDiff(args.path, content, content.replace(oldStr, String(args.new_string ?? ''))) };
+    }
+    return { ok: true, diff: '' };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
 }
 
 const Tools = {
@@ -52,7 +106,7 @@ const Tools = {
     }
   },
 
-  async write_file({ path: targetPath, content }) {
+  async write_file({ path: targetPath, content }, ctx = {}) {
     try {
       const fullPath = path.resolve(process.cwd(), targetPath);
       const dir = path.dirname(fullPath);
@@ -63,7 +117,7 @@ const Tools = {
 
       fs.writeFileSync(fullPath, content, 'utf-8');
 
-      if (existed) {
+      if (existed && !ctx.quietDiff) {
         process.stdout.write(renderDiff(targetPath, oldContent, content));
       }
 
@@ -77,7 +131,7 @@ const Tools = {
     }
   },
 
-  async edit_file({ path: targetPath, old_string, new_string }) {
+  async edit_file({ path: targetPath, old_string, new_string }, ctx = {}) {
     try {
       const fullPath = path.resolve(process.cwd(), targetPath);
       if (!fs.existsSync(fullPath)) {
@@ -100,8 +154,8 @@ const Tools = {
       const newContent = content.replace(old_string, new_string);
       fs.writeFileSync(fullPath, newContent, 'utf-8');
 
-      // Visual diff in terminal
-      process.stdout.write(renderDiff(targetPath, content, newContent));
+      // Visual diff in terminal (COPILOT already showed it as a preview)
+      if (!ctx.quietDiff) process.stdout.write(renderDiff(targetPath, content, newContent));
 
       return {
         path: targetPath,
@@ -135,15 +189,19 @@ const Tools = {
     }
   },
 
-  async run_command({ command, cwd, timeout_ms = 30000 }) {
+  async run_command({ command, cwd, timeout_ms = 120000 }) {
+    if (isCommandCatastrophic(command)) {
+      return { command, exit_code: 126, stdout: '', stderr: 'Comando bloqueado por Deiza Code: destruiría el sistema o el disco.', blocked: true };
+    }
     return new Promise((resolve) => {
       const execCwd = cwd ? path.resolve(process.cwd(), cwd) : process.cwd();
-      exec(command, { cwd: execCwd, timeout: timeout_ms, maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
+      const limit = Math.min(Math.max(Number(timeout_ms) || 120000, 1000), 600000);
+      exec(command, { cwd: execCwd, timeout: limit, maxBuffer: 10 * 1024 * 1024, windowsHide: true }, (err, stdout, stderr) => {
         resolve({
           command,
           exit_code: err ? (err.code || 1) : 0,
-          stdout: (stdout || '').trim(),
-          stderr: (stderr || '').trim(),
+          stdout: (stdout || '').trim().slice(-30000),
+          stderr: (stderr || '').trim().slice(-10000),
           killed_by_timeout: err?.killed || false,
         });
       });
@@ -351,6 +409,7 @@ const TOOL_DEFINITIONS = [
       properties: {
         command: { type: 'string', description: 'Shell command line to execute.' },
         cwd: { type: 'string', description: 'Working directory.' },
+        timeout_ms: { type: 'number', description: 'Optional timeout in milliseconds (default 120000, max 600000).' },
       },
       required: ['command'],
     },
@@ -402,4 +461,6 @@ module.exports = {
   Tools,
   TOOL_DEFINITIONS,
   isCommandRisky,
+  isCommandCatastrophic,
+  previewChange,
 };

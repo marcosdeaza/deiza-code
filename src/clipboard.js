@@ -117,7 +117,7 @@ function getClipboardImage() {
     if (platform === 'win32') {
       // Windows: use PowerShell System.Windows.Forms.Clipboard
       const psCmd = `powershell -NoProfile -Command "Add-Type -AssemblyName System.Windows.Forms; if ([System.Windows.Forms.Clipboard]::ContainsImage()) { $img = [System.Windows.Forms.Clipboard]::GetImage(); $img.Save('${targetFile.replace(/'/g, "''")}', [System.Drawing.Imaging.ImageFormat]::Png); Write-Output 'OK' } else { Write-Output 'EMPTY' }"`;
-      const out = execSync(psCmd, { encoding: 'utf8', timeout: 5000 }).trim();
+      const out = execSync(psCmd, { encoding: 'utf8', timeout: 8000, stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }).trim();
       if (out.includes('OK') && fs.existsSync(targetFile) && fs.statSync(targetFile).size > 0) {
         return {
           success: true,
@@ -145,7 +145,7 @@ function getClipboardImage() {
           return "EMPTY"
         end try
       `;
-      const out = execSync(`osascript -e '${script.replace(/\n/g, "' -e '")}'`, { encoding: 'utf8', timeout: 5000 }).trim();
+      const out = execSync(`osascript -e '${script.replace(/\n/g, "' -e '")}'`, { encoding: 'utf8', timeout: 8000, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
       if (out.includes('OK') && fs.existsSync(targetFile) && fs.statSync(targetFile).size > 0) {
         return {
           success: true,

@@ -3,6 +3,8 @@
  * Granate / Burgundy palette (#8C2F39) with clean, modern developer UX.
  */
 
+const { VERSION } = require('./config');
+
 const C = {
   reset: '\x1b[0m',
   bold: '\x1b[1m',
@@ -37,8 +39,30 @@ ${C.granateBold}  ██████╗  ███████╗ ██╗ █�
   ██║  ██║ ██╔═══╝  ██║  ███╔╝   ██╔══██║     ██║      ██║   ██║ ██║  ██║ ██╔═══╝ 
   ██████╔╝ ███████╗ ██║ ███████╗ ██║  ██║     ╚██████╗ ╚██████╔╝ ██████╔╝ ███████╗
   ╚═════╝  ╚══════╝ ╚═╝ ╚══════╝ ╚═╝  ╚═╝      ╚═════╝  ╚═════╝  ╚═════╝  ╚══════╝${C.reset}
-  ${C.gray}Autonomous Terminal Coding Agent · v1.2.0${C.reset}
+  ${C.gray}Autonomous Terminal Coding Agent · v${VERSION}${C.reset}
 `;
+
+const MODE_INFO = {
+  build: { label: 'BUILD', color: C.rose, desc: 'Autónomo: edita, ejecuta y verifica sin pedir permiso.' },
+  copilot: { label: 'COPILOT', color: C.gold, desc: 'Supervisado: cada cambio y comando se muestra y se aprueba.' },
+  plan: { label: 'PLAN', color: C.cyan, desc: 'Solo lectura: analiza y propone un plan sin tocar archivos.' },
+};
+
+function modeBadge(mode) {
+  const info = MODE_INFO[mode] || MODE_INFO.build;
+  return `${info.color}[${info.label}]${C.reset}`;
+}
+
+function renderModes(current) {
+  let out = `\n${C.granateBold}Modos de permisos de Deiza Code:${C.reset}\n`;
+  for (const key of ['build', 'copilot', 'plan']) {
+    const info = MODE_INFO[key];
+    const mark = key === current ? `${C.green}●${C.reset}` : `${C.darkGray}○${C.reset}`;
+    out += `  ${mark} ${info.color}${info.label.padEnd(8)}${C.reset} ${C.white}/${key}${C.reset}${' '.repeat(Math.max(1, 10 - key.length))}${C.gray}${info.desc}${C.reset}\n`;
+  }
+  out += `  ${C.gray}Cambia con /build, /copilot o /plan. Por defecto: BUILD (guárdalo con /config mode <modo>).${C.reset}\n`;
+  return out;
+}
 
 const Status = {
   thinking: `  ${C.granateBright}●${C.reset} ${C.gray}Analizando y procesando...${C.reset}`,
@@ -133,30 +157,30 @@ function highlightMarkdown(text) {
 }
 
 const COMMANDS_REGISTRY = [
-  { cmd: '/session', args: '[list|new|resume|delete|info]', desc: 'Gestor de sesiones: listar, crear, reanudar, borrar y métricas de tokens', cat: 'Sesión' },
-  { cmd: '/tokens', args: '', desc: 'Métricas en tiempo real de la ventana de contexto de 1M de tokens', cat: 'Sesión' },
-  { cmd: '/context', args: '', desc: 'Alias de /tokens: ver capacidad disponible y tokens en memoria', cat: 'Sesión' },
-  { cmd: '/plan', args: '[query]', desc: 'Modo arquitectura: exploración y blueprint sin editar archivos', cat: 'Modos' },
-  { cmd: '/build', args: '[query]', desc: 'Modo implementación: edición quirúrgica, diffs y tests activos', cat: 'Modos' },
-  { cmd: '/mode', args: '[plan|build]', desc: 'Alternar entre modo BUILD y PLAN', cat: 'Modos' },
+  { cmd: '/build', args: '', desc: 'Modo BUILD (por defecto): autónomo, sin pedir permisos', cat: 'Modos' },
+  { cmd: '/copilot', args: '', desc: 'Modo COPILOT: revisa y aprueba cada cambio y comando', cat: 'Modos' },
+  { cmd: '/plan', args: '', desc: 'Modo PLAN: análisis y plan de implementación sin tocar archivos', cat: 'Modos' },
+  { cmd: '/mode', args: '[build|copilot|plan]', desc: 'Ver o cambiar el modo de permisos activo', cat: 'Modos' },
+  { cmd: '/session', args: '[list|new|resume|delete|info]', desc: 'Gestor de sesiones: listar, crear, reanudar, borrar y métricas', cat: 'Sesión' },
+  { cmd: '/tokens', args: '', desc: 'Métricas de la ventana de contexto y tokens de la sesión', cat: 'Sesión' },
+  { cmd: '/context', args: '', desc: 'Alias de /tokens', cat: 'Sesión' },
   { cmd: '/history', args: '', desc: 'Ver historial de conversaciones y consumo de tokens', cat: 'Conversaciones' },
-  { cmd: '/resume', args: '[id]', desc: 'Continuar una conversación anterior guardada con todo su contexto', cat: 'Conversaciones' },
+  { cmd: '/resume', args: '[id]', desc: 'Continuar una conversación anterior con todo su contexto', cat: 'Conversaciones' },
   { cmd: '/new', args: '[título]', desc: 'Iniciar una nueva conversación limpia en este workspace', cat: 'Conversaciones' },
-  { cmd: '/paste', args: '', desc: 'Pegar captura del portapapeles del SO (Win+Shift+S / PrtScn / Cmd+Shift+4)', cat: 'Herramientas' },
-  { cmd: '/image', args: '<ruta> [inst]', desc: 'Analizar capturas o maquetas con visión multimodal AWS', cat: 'Herramientas' },
+  { cmd: '/paste', args: '', desc: 'Pegar captura del portapapeles (Win+Shift+S / PrtScn / Cmd+Shift+4)', cat: 'Herramientas' },
+  { cmd: '/image', args: '<ruta> [inst]', desc: 'Analizar capturas o maquetas con visión multimodal', cat: 'Herramientas' },
   { cmd: '/agent', args: '<rol> <tarea>', desc: 'Lanzar un subagente worker aislado (ej: Auditor, Tester)', cat: 'Agentes' },
-  { cmd: '/whoami', args: '', desc: 'Ver estado de tu cuenta, plan, tokens y cuota activa', cat: 'Cuenta' },
-  { cmd: '/usage', args: '', desc: 'Consultar consumo de tokens y ventana rodante de 5 horas', cat: 'Cuenta' },
-  { cmd: '/update', args: '', desc: 'Comprobar y actualizar Deiza Code a la última versión', cat: 'Sistema' },
-  { cmd: '/model', args: '[id]', desc: 'Consultar motor oficial (deiza-omniscient · 1M contexto en AWS)', cat: 'Configuración' },
-  { cmd: '/models', args: '', desc: 'Alias de /model: información sobre el motor activo', cat: 'Configuración' },
-  { cmd: '/endpoint', args: '[url]', desc: 'Conectar a otro endpoint de IA (Ollama, vLLM, OpenAI)', cat: 'Configuración' },
-  { cmd: '/config', args: '', desc: 'Ver o modificar directivas y configuración local', cat: 'Configuración' },
-  { cmd: '/init', args: '', desc: 'Inicializar directivas .deizarules en la raíz del repo', cat: 'Proyecto' },
-  { cmd: '/clear', args: '', desc: 'Limpiar contexto de la conversación actual', cat: 'Sesión' },
-  { cmd: '/login', args: '', desc: 'Iniciar sesión (Navegador Web o API Key manual)', cat: 'Cuenta' },
+  { cmd: '/whoami', args: '', desc: 'Ver tu cuenta, plan, tokens y cuota activa', cat: 'Cuenta' },
+  { cmd: '/usage', args: '', desc: 'Consultar consumo de tokens y ventana de 5 horas', cat: 'Cuenta' },
+  { cmd: '/login', args: '', desc: 'Iniciar sesión con tu cuenta de Deiza (navegador o API Key)', cat: 'Cuenta' },
   { cmd: '/logout', args: '', desc: 'Cerrar sesión en esta máquina', cat: 'Cuenta' },
-  { cmd: '/help', args: '', desc: 'Ver guía completa de comandos y ejemplos de uso', cat: 'Ayuda' },
+  { cmd: '/update', args: '', desc: 'Comprobar y actualizar Deiza Code a la última versión', cat: 'Sistema' },
+  { cmd: '/model', args: '[id]', desc: 'Motor activo (deiza-omniscient) o modelo del endpoint custom', cat: 'Configuración' },
+  { cmd: '/endpoint', args: '[url|deiza]', desc: 'Usar otro motor OpenAI-compatible (Ollama, vLLM...) o volver a Deiza', cat: 'Configuración' },
+  { cmd: '/config', args: '', desc: 'Ver o modificar la configuración local', cat: 'Configuración' },
+  { cmd: '/init', args: '', desc: 'Crear directivas .deizarules en la raíz del repo', cat: 'Proyecto' },
+  { cmd: '/clear', args: '', desc: 'Limpiar el contexto de la conversación actual', cat: 'Sesión' },
+  { cmd: '/help', args: '', desc: 'Ver todos los comandos', cat: 'Ayuda' },
   { cmd: '/exit', args: '', desc: 'Salir de Deiza Code', cat: 'Sesión' },
 ];
 
@@ -191,24 +215,23 @@ function renderCommandPalette(filter = '') {
 /**
  * Format /whoami account profile view
  */
-function renderWhoami({ email, plan, apiKey, apiBase, usage, currentMode }) {
-  const isCustom = !apiBase.includes('deiza.org');
+function renderWhoami({ email, name, plan, apiKey, apiBase, isCustom, usage, currentMode }) {
   const usedPct = usage && usage.token_limit > 0 ? Math.round((usage.tokens_used / usage.token_limit) * 100) : 0;
   const mins = usage?.reset_in_seconds ? Math.ceil(usage.reset_in_seconds / 60) : 0;
   const resetText = mins > 0 ? `Se reinicia en ${Math.floor(mins / 60)}h ${mins % 60}m` : '0% (se iniciará al enviar un mensaje)';
   const keySnippet = apiKey ? `${apiKey.slice(0, 8)}...${apiKey.slice(-4)}` : 'No configurada';
 
   let content = '';
-  content += `${C.white}Cuenta / Usuario:${C.reset}   ${C.bold}${email || 'Conectada'}${C.reset}\n`;
+  content += `${C.white}Cuenta / Usuario:${C.reset}   ${C.bold}${name ? `${name} · ` : ''}${email || 'Conectada'}${C.reset}\n`;
   content += `${C.white}Plan de Suscripción:${C.reset} ${C.granateBold}[${(plan || 'pro').toUpperCase()}]${C.reset} (Acceso completo Deiza Code)\n`;
-  content += `${C.white}Conexión:${C.reset}           ${isCustom ? `${C.gold}Endpoint Personalizado${C.reset}` : `${C.green}Nativo Deiza.org${C.reset}`}\n`;
+  content += `${C.white}Motor:${C.reset}              ${isCustom ? `${C.gold}Endpoint personalizado ${apiBase}${C.reset}` : `${C.green}Nativo Deiza.org${C.reset}`}\n`;
   content += `${C.white}API Key Guardada:${C.reset}   ${C.gray}${keySnippet}${C.reset}\n`;
-  content += `${C.white}Modo Terminal:${C.reset}      ${currentMode === 'plan' ? `${C.cyan}[PLAN] (Arquitectura segura)` : `${C.rose}[BUILD] (Edición quirúrgica)`}${C.reset}\n`;
-  if (!isCustom && usage) {
+  content += `${C.white}Modo de permisos:${C.reset}   ${modeBadge(currentMode)} ${C.gray}${(MODE_INFO[currentMode] || MODE_INFO.build).desc}${C.reset}\n`;
+  if (usage) {
     content += `${C.white}Tokens Utilizados:${C.reset}  ${usage.tokens_used.toLocaleString()} / ${usage.token_limit.toLocaleString()} (${usedPct}%)\n`;
     content += `${C.white}Ventana 5 Horas:${C.reset}    ${C.gray}${resetText}${C.reset}\n`;
   }
-  content += `${C.white}Motor de Inferencia:${C.reset} ${C.granateBright}Deiza Omniscient${C.reset} ${C.gray}[Liquid 5.1 · Amazon AWS Dedicated Cluster]${C.reset}`;
+  content += `${C.white}Motor de Inferencia:${C.reset} ${isCustom ? `${C.granateBright}${C.reset}` : `${C.granateBright}Deiza Omniscient${C.reset} ${C.gray}[Liquid 5.1 · Amazon AWS Dedicated Cluster]${C.reset}`}`;
 
   return box('Perfil de Usuario — Deiza Code', content, C.granate);
 }
@@ -224,7 +247,7 @@ function renderSessionList(sessions, activeSessionId) {
   for (const s of sessions) {
     const isActive = s.id === activeSessionId;
     const bullet = isActive ? `${C.green}● [ACTIVA]${C.reset}` : `${C.gray}○${C.reset}`;
-    const modeBadge = s.mode === 'plan' ? `${C.cyan}[PLAN]` : `${C.rose}[BUILD]`;
+    const modeStr = modeBadge(s.mode || 'build');
     const dateStr = s.updatedAt ? new Date(s.updatedAt).toLocaleString('es-ES', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
     const title = s.title.length > 32 ? s.title.slice(0, 30) + '..' : s.title;
     const tokens = s.tokens || { total: 0 };
@@ -234,7 +257,7 @@ function renderSessionList(sessions, activeSessionId) {
       ? `${C.gold}⚡ ${tokens.total.toLocaleString()} tok${C.reset}`
       : `${C.darkGray}0 tok${C.reset}`;
 
-    content += `  ${bullet} ${C.bold}${C.white}${s.id}${C.reset}  ${modeBadge}${C.reset}  ${C.gray}${dateStr}${C.reset}  ${C.white}${title}${C.reset}  ${tokenStr}  ${C.darkGray}(${s.messageCount} msgs)${C.reset}\n`;
+    content += `  ${bullet} ${C.bold}${C.white}${s.id}${C.reset}  ${modeStr}  ${C.gray}${dateStr}${C.reset}  ${C.white}${title}${C.reset}  ${tokenStr}  ${C.darkGray}(${s.messageCount} msgs)${C.reset}\n`;
   }
 
   content += `\n  ${C.darkGray}───────────────────────────────────────────────────────────────────${C.reset}\n`;
@@ -247,7 +270,7 @@ function renderSessionList(sessions, activeSessionId) {
 function renderSessionInfo(session) {
   if (!session) return `\n  ${C.gray}No hay información de sesión activa.${C.reset}\n`;
   const tokens = session.tokens || { prompt: 0, completion: 0, total: 0 };
-  const modeBadge = session.mode === 'plan' ? `${C.cyan}[PLAN] (Arquitectura segura)` : `${C.rose}[BUILD] (Edición quirúrgica y tests)`;
+  const modeStr = `${modeBadge(session.mode || 'build')} ${C.gray}${(MODE_INFO[session.mode] || MODE_INFO.build).desc}${C.reset}`;
   const created = session.createdAt ? new Date(session.createdAt).toLocaleString('es-ES') : '-';
   const updated = session.updatedAt ? new Date(session.updatedAt).toLocaleString('es-ES') : '-';
   const msgCount = Array.isArray(session.messages) ? session.messages.length : 0;
@@ -255,7 +278,7 @@ function renderSessionInfo(session) {
   let content = '';
   content += `${C.white}ID de Sesión:${C.reset}         ${C.bold}${C.rose}${session.id}${C.reset}\n`;
   content += `${C.white}Título / Asunto:${C.reset}      ${C.bold}${session.title || 'Nueva conversación'}${C.reset}\n`;
-  content += `${C.white}Modo de Trabajo:${C.reset}      ${modeBadge}${C.reset}\n`;
+  content += `${C.white}Modo de Trabajo:${C.reset}      ${modeStr}\n`;
   content += `${C.white}Ruta Workspace:${C.reset}       ${C.gray}${session.cwd || process.cwd()}${C.reset}\n`;
   content += `${C.white}Mensajes Guardados:${C.reset}   ${C.bold}${msgCount}${C.reset} mensajes\n`;
   content += `${C.white}Inicio de Conversación:${C.reset}${C.gray} ${created}${C.reset}\n`;
@@ -271,6 +294,9 @@ function renderSessionInfo(session) {
 module.exports = {
   C,
   BANNER,
+  MODE_INFO,
+  modeBadge,
+  renderModes,
   Status,
   renderDiff,
   box,

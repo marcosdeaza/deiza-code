@@ -1,35 +1,35 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# DEIZA CODE — Guía de Reciclaje y Uso con Endpoints Custom de IA
+# DEIZA CODE — Uso con endpoints de IA alternativos
 # ==============================================================================
-# Deiza Code viene configurado de forma nativa para conectarse con la API de
-# Deiza (https://deiza.org), pero está diseñado con una arquitectura universal
-# compatible con cualquier proveedor que soporte la API estándar de OpenAI / v1.
+# Deiza Code arranca siempre con tu cuenta de Deiza (plan Friend o Signet).
+# Una vez dentro puedes cambiar el motor que responde por cualquier servidor
+# compatible con la API estándar de OpenAI (/v1/chat/completions).
 # ==============================================================================
 
-# 1. Usar con Ollama en local (Llama 3, DeepSeek Coder, Qwen, etc.)
+# 1. Ollama en local (Llama 3, DeepSeek Coder, Qwen, etc.)
 # ------------------------------------------------------------------------------
-# Inicia tu servidor de Ollama (por defecto en http://localhost:11434):
 # ollama run deepseek-coder-v2
+deiza --endpoint http://localhost:11434 --model deepseek-coder-v2
 
-deiza --endpoint http://localhost:11434/v1 --model deepseek-coder-v2
-
-# O mediante variables de entorno:
-export OPENAI_BASE_URL="http://localhost:11434/v1"
-export MODEL="deepseek-coder-v2"
+# O mediante variables de entorno propias de Deiza Code:
+export DEIZA_ENDPOINT="http://localhost:11434"
+export DEIZA_MODEL="deepseek-coder-v2"
 deiza
 
-# 2. Usar con OpenAI o proxies compatibles (vLLM, LM Studio, Groq, OpenRouter)
+# 2. OpenAI o proxies compatibles (vLLM, LM Studio, Groq, OpenRouter)
 # ------------------------------------------------------------------------------
-export OPENAI_BASE_URL="https://api.openai.com/v1"
-export OPENAI_API_KEY="sk-..."
-export MODEL="gpt-4o"
+deiza --endpoint https://api.openai.com/v1 --model gpt-4o --key sk-...
+# o:
+export DEIZA_ENDPOINT="https://api.openai.com/v1"
+export DEIZA_ENDPOINT_KEY="sk-..."
+export DEIZA_MODEL="gpt-4o"
 deiza
 
-# 3. Usar con vLLM o LM Studio local
+# 3. vLLM o LM Studio local
 # ------------------------------------------------------------------------------
 deiza --endpoint http://localhost:8000/v1 --model mistral-7b-instruct
 
-# 4. Volver al endpoint nativo de Deiza en la nube
+# 4. Volver al motor nativo de Deiza (deiza-omniscient)
 # ------------------------------------------------------------------------------
-deiza --endpoint https://deiza.org
+deiza --endpoint deiza
