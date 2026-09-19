@@ -41,10 +41,19 @@ async function startRepl(initialConfig) {
     console.log(`  ${C.white}Modo:${C.reset} ${C.gold}Endpoint Personalizado / OpenAI Compatible${C.reset}`);
     console.log(`  ${C.white}URL:${C.reset} ${C.gray}${cfg.apiBase}${C.reset}`);
   } else {
+    if (plan === 'free') {
+      console.log(`\n  ${C.granateBright}✖ Acceso restringido:${C.reset} Deiza Code requiere un plan de pago activo (${C.bold}Friend${C.reset} o ${C.bold}Signet${C.reset}).`);
+      console.log(`  Actualiza tu suscripción en: ${C.white}https://deiza.org/plans${C.reset}\n`);
+      process.exit(1);
+    }
     console.log(`  ${C.white}Cuenta:${C.reset} ${C.bold}${cfg.email || 'Conectada'}${C.reset} · ${C.granateBold}[${plan.toUpperCase()}]${C.reset} · ${C.gray}Uso:${C.reset} ${pct}%${resetLabel ? ` (${resetLabel} restantes)` : ''}`);
   }
 
-  console.log(`  ${C.white}Modelo activo:${C.reset} ${C.granateBright}${activeModel}${C.reset} ${C.gray}(usa /model para cambiar)${C.reset}`);
+  const modelLabel = (!cfg.isCustomEndpoint && (activeModel.includes('omniscient') || activeModel.includes('liquid')))
+    ? `${C.granateBright}Deiza Omniscient${C.reset} ${C.gray}[Liquid 5.1 · Amazon AWS Cluster] (BETA)${C.reset}`
+    : `${C.granateBright}${activeModel}${C.reset}`;
+
+  console.log(`  ${C.white}Modelo activo:${C.reset} ${modelLabel}`);
   console.log(`  ${C.white}Workspace:${C.reset} ${C.gray}${process.cwd()}${C.reset} [${projType}]${branchLabel}\n`);
 
   console.log(`  ${C.gray}Escribe tu consulta o usa ${C.white}/help${C.gray} para ver los comandos disponibles.${C.reset}\n`);
@@ -95,19 +104,22 @@ async function startRepl(initialConfig) {
       }
 
       if (cmd === '/model') {
-        const targetModel = parts[1];
-        if (targetModel) {
-          activeModel = targetModel;
-          cfg.model = activeModel;
-          saveConfig(cfg);
-          console.log(`  ${C.green}✓ Modelo cambiado a ${C.bold}${activeModel}${C.reset}\n`);
+        if (!cfg.isCustomEndpoint) {
+          console.log(`\n${C.granateBold}Motor Dedicado en Deiza Code:${C.reset}`);
+          console.log(`  ${C.green}●${C.reset} ${C.bold}Deiza Omniscient${C.reset} (Liquid 5.1 · BETA)`);
+          console.log(`    ${C.gray}Infraestructura:${C.reset} Amazon AWS Dedicated High-Compute Clusters`);
+          console.log(`    ${C.gray}Especialidad:${C.reset} Diffs quirúrgicos en línea, tests y ejecución autónoma`);
+          console.log(`    ${C.gray}Estado:${C.reset} Motor exclusivo asignado durante la fase Beta.\n`);
         } else {
-          console.log(`\n${C.granateBold}Modelos disponibles:${C.reset}`);
-          models.forEach((m) => {
-            const isCurrent = m.id === activeModel;
-            console.log(`  ${isCurrent ? C.green + '●' : C.gray + '○'} ${C.bold}${m.id}${C.reset} - ${m.description || m.name}`);
-          });
-          console.log(`\n  ${C.gray}Usa: /model <id> para seleccionar uno.${C.reset}\n`);
+          const targetModel = parts[1];
+          if (targetModel) {
+            activeModel = targetModel;
+            cfg.model = activeModel;
+            saveConfig(cfg);
+            console.log(`  ${C.green}✓ Modelo cambiado a ${C.bold}${activeModel}${C.reset}\n`);
+          } else {
+            console.log(`\n  ${C.gray}Usa: /model <id> para cambiar el modelo en tu endpoint custom.${C.reset}\n`);
+          }
         }
         rl.prompt();
         return;

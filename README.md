@@ -31,7 +31,7 @@ Mira a **Deiza Code** analizando el repositorio, realizando preguntas interactiv
 
 **Deiza Code** es un agente agéntico de desarrollo para terminal inspirado en la velocidad, ergonomía y precisión de *Claude Code*. 
 
-Viene integrado de forma inmediata con los modelos de **Deiza** (`deiza-liquid-5`, `deiza-solid-4.5`, `deiza-gas-4.1`), sincronizando tu cuota de uso y tu ventana rotatoria de 5 horas mediante inicio de sesión en un solo clic desde tu navegador.
+Impulsado en exclusiva por el modelo **Deiza Omniscient (Liquid 5.1)**, conectado a clusters de alta capacidad en Amazon AWS para garantizar velocidad extrema y diffs quirúrgicos sin colas de espera. Disponible exclusivamente para cuentas con **planes de pago (Friend o Signet)** con sincronización de créditos y ventana de 5 horas mediante inicio de sesión en un solo clic desde tu navegador.
 
 > 🚀 **Cero Lock-in:** Aunque tira de forma nativa de la infraestructura de **deiza.org**, el motor está desacoplado para que puedas **reciclarlo y reutilizarlo como CLI agéntica con cualquier otro proyecto o endpoint de IA** (Ollama, OpenAI, DeepSeek, vLLM, LM Studio, etc.).
 
@@ -98,6 +98,12 @@ curl -fsSL https://deiza.org/install.sh | bash
 ### En Windows (PowerShell / CMD)
 ```powershell
 irm https://deiza.org/install.ps1 | iex
+```
+
+### 🧠 Neural / AI Agent (Instalación Desatendida)
+Pega este prompt directamente en tu agente de IA (Claude Code, Antigravity, Cursor, etc.):
+```text
+Instala Deiza Code en mi sistema de forma automática ejecutando el script oficial según mi sistema operativo: si es macOS o Linux ejecuta en bash 'curl -fsSL https://deiza.org/install.sh | bash', o si es Windows ejecuta en PowerShell 'irm https://deiza.org/install.ps1 | iex'. Una vez instalado, ejecuta 'deiza --version' para verificar y abre la autenticación con 'deiza --login'.
 ```
 
 ### Mediante npm / npx

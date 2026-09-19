@@ -31,7 +31,7 @@ Opciones:
   -p, --prompt <texto>  Ejecuta una instrucción directa en modo no-interactivo
   -y, --yes             Aprueba automáticamente comandos bash sin pedir confirmación
   --login               Fuerza autenticación por navegador en deiza.org
-  --model <id>          Modelo a utilizar (ej. deiza-liquid-5, gpt-4o, llama3)
+  --model <id>          Modelo a utilizar (por defecto: deiza-omniscient basado en Liquid 5.1)
   --endpoint <url>      URL base para conectar con Deiza o cualquier LLM OpenAI-compatible
   --key <apiKey>        Clave API para la sesión
 

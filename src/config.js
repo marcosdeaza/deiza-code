@@ -12,7 +12,7 @@ const CONFIG_FILE = path.join(DEIZA_DIR, 'config.json');
 const SESSIONS_DIR = path.join(DEIZA_DIR, 'sessions');
 
 const DEFAULT_DEIZA_API = 'https://deiza.org';
-const DEFAULT_MODEL = 'deiza-liquid-5';
+const DEFAULT_MODEL = 'deiza-omniscient';
 
 function ensureDirs() {
   if (!fs.existsSync(DEIZA_DIR)) fs.mkdirSync(DEIZA_DIR, { recursive: true });

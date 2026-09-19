@@ -172,9 +172,7 @@ async function fetchModels(apiKey, apiBase = 'https://deiza.org') {
             }
           } catch {}
           resolve([
-            { id: 'deiza-liquid-5', name: 'Deiza Liquid 5', description: 'Máxima capacidad y razonamiento rápido' },
-            { id: 'deiza-solid-4.5', name: 'Deiza Solid 4.5', description: 'Programación estructurada y refactors' },
-            { id: 'deiza-gas-4.1', name: 'Deiza Gas 4.1', description: 'Ultra-rápido para tareas ligeras' },
+            { id: 'deiza-omniscient', name: 'Deiza Omniscient', description: 'Motor autónomo Liquid 5.1 en clusters dedicados AWS (Beta)' },
           ]);
         });
       }
@@ -182,9 +180,7 @@ async function fetchModels(apiKey, apiBase = 'https://deiza.org') {
 
     req.on('error', () => {
       resolve([
-        { id: 'deiza-liquid-5', name: 'Deiza Liquid 5', description: 'Máxima capacidad' },
-        { id: 'deiza-solid-4.5', name: 'Deiza Solid 4.5', description: 'Programación estructurada' },
-        { id: 'deiza-gas-4.1', name: 'Deiza Gas 4.1', description: 'Ultra-rápido' },
+        { id: 'deiza-omniscient', name: 'Deiza Omniscient', description: 'Motor autónomo Liquid 5.1 en clusters dedicados AWS (Beta)' },
       ]);
     });
     req.end();
