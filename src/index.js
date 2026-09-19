@@ -5,13 +5,47 @@
 
 const fs = require('fs');
 const path = require('path');
+const https = require('https');
+const { exec } = require('child_process');
 const readline = require('readline');
-const { C, BANNER, Status, box } = require('./ui');
-const { loadConfig, saveConfig, DEFAULT_MODEL, DEFAULT_DEIZA_API } = require('./config');
-const { runLoginFlow, fetchModels, fetchUsage } = require('./auth');
-const { runAgentTurn } = require('./agent');
+const { C, BANNER, Status, box, COMMANDS_REGISTRY, renderCommandPalette, renderWhoami } = require('./ui');
+const { loadConfig, saveConfig, DEFAULT_MODEL, DEFAULT_DEIZA_API, VERSION } = require('./config');
+const { runLoginFlow, fetchModels, fetchUsage, validateApiKey } = require('./auth');
+const { runAgentTurn, streamCompletion } = require('./agent');
 const { Tools } = require('./tools');
 const { getGitContext, detectProjectType } = require('./context');
+
+async function checkLatestVersion() {
+  return new Promise((resolve) => {
+    const req = https.get('https://deiza.org/downloads/version.json', { timeout: 2000 }, (res) => {
+      if (res.statusCode !== 200) return resolve(null);
+      let body = '';
+      res.on('data', c => { body += c; });
+      res.on('end', () => {
+        try {
+          resolve(JSON.parse(body));
+        } catch {
+          resolve(null);
+        }
+      });
+    });
+    req.on('error', () => resolve(null));
+  });
+}
+
+function runAutoUpdate() {
+  return new Promise((resolve, reject) => {
+    const isWin = process.platform === 'win32';
+    const cmd = isWin
+      ? 'powershell -ExecutionPolicy Bypass -Command "irm https://deiza.org/install.ps1 | iex"'
+      : 'curl -fsSL https://deiza.org/install.sh | bash';
+
+    exec(cmd, (err, stdout, stderr) => {
+      if (err) return reject(new Error(stderr || err.message));
+      resolve(stdout);
+    });
+  });
+}
 
 async function startRepl(initialConfig) {
   let cfg = initialConfig;
@@ -58,7 +92,18 @@ async function startRepl(initialConfig) {
   console.log(`  ${C.white}Modelo activo:${C.reset} ${modelLabel}`);
   console.log(`  ${C.white}Workspace:${C.reset} ${C.gray}${process.cwd()}${C.reset} [${projType}]${branchLabel}\n`);
 
-  console.log(`  ${C.gray}Escribe tu consulta o usa ${C.white}/help${C.gray} para ver los comandos disponibles.${C.reset}\n`);
+  console.log(`  ${C.gray}Escribe ${C.rose}/ ${C.gray}para ver comandos en tiempo real, o escribe tu consulta directamente.${C.reset}\n`);
+
+  // Non-blocking background version check
+  checkLatestVersion().then((remote) => {
+    if (remote && remote.version) {
+      const localVer = VERSION;
+      if (remote.version !== localVer) {
+        console.log(`\n  ${C.gold}🔔 Nueva versión de Deiza Code disponible: ${C.bold}v${remote.version}${C.reset} ${C.gray}(actual: v${localVer})${C.reset}. Ejecuta ${C.bold}/update${C.reset} para actualizar en 1 clic.\n`);
+        rl.prompt(true);
+      }
+    }
+  }).catch(() => {});
 
   const getPrompt = () => {
     const badge = currentMode === 'plan'
@@ -67,19 +112,39 @@ async function startRepl(initialConfig) {
     return `${C.granateBold}deiza-code${C.reset} ${badge} ❯ `;
   };
 
+  const slashCompleter = (line) => {
+    if (line.startsWith('/')) {
+      const hits = COMMANDS_REGISTRY.map(c => c.cmd).filter(c => c.startsWith(line));
+      return [hits.length ? hits : COMMANDS_REGISTRY.map(c => c.cmd), line];
+    }
+    return [[], line];
+  };
+
   const messages = [];
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
+    completer: slashCompleter,
     prompt: getPrompt(),
   });
+
+  // Real-time keystroke listener: typing '/' on an empty line immediately renders command palette
+  readline.emitKeypressEvents(process.stdin);
+  if (process.stdin.isTTY) {
+    process.stdin.on('keypress', (str, key) => {
+      if (str === '/' && rl.line === '') {
+        process.stdout.write('\n' + renderCommandPalette() + '\n');
+        rl.prompt(true);
+      }
+    });
+  }
 
   // Safe confirmation prompt helper
   const confirmAction = (promptText) => {
     return new Promise((resolve) => {
       rl.question(`  ${C.gold}⚠️  ${promptText}${C.reset}`, (answer) => {
         const a = answer.trim().toLowerCase();
-        resolve(a === 'y' || a === 's' || a === 'yes' || a === 'si');
+        resolve(a === 'y' || a === 's' || a === 'yes' || a === 'si' || a === '');
       });
     });
   };
@@ -98,20 +163,112 @@ async function startRepl(initialConfig) {
       const parts = input.split(' ');
       const cmd = parts[0].toLowerCase();
 
-      if (cmd === '/help') {
-        console.log(`\n${C.granateBold}Comandos disponibles en Deiza Code:${C.reset}`);
-        console.log(`  ${C.bold}/mode [plan|build]${C.reset} - Alternar entre modo BUILD (edición activa) y PLAN (arquitectura)`);
-        console.log(`  ${C.bold}/plan${C.reset}              - Activar modo PLAN (exploración segura sin modificar archivos)`);
-        console.log(`  ${C.bold}/build${C.reset}             - Activar modo BUILD (edición quirúrgica y tests en el repo)`);
-        console.log(`  ${C.bold}/image <ruta> [p]${C.reset}  - Analizar imagen/mockup con visión multimodal (Amazon Bedrock Mantle)`);
-        console.log(`  ${C.bold}/model [id]${C.reset}        - Consultar o cambiar de modelo en caliente`);
-        console.log(`  ${C.bold}/usage${C.reset}             - Consultar uso de tokens del plan y ventana de 5 horas`);
-        console.log(`  ${C.bold}/endpoint [url]${C.reset}    - Configurar endpoint custom (Ollama, vLLM, OpenAI)`);
-        console.log(`  ${C.bold}/init${C.reset}              - Inicializar archivo de directivas .deizarules`);
-        console.log(`  ${C.bold}/clear${C.reset}             - Limpiar contexto de la conversación actual`);
-        console.log(`  ${C.bold}/login${C.reset}             - Iniciar sesión con tu cuenta de Deiza`);
-        console.log(`  ${C.bold}/logout${C.reset}            - Cerrar sesión en esta máquina`);
-        console.log(`  ${C.bold}/exit${C.reset}              - Salir de Deiza Code\n`);
+      if (cmd === '/' || cmd === '/help') {
+        console.log(renderCommandPalette(parts[1] || ''));
+        rl.prompt();
+        return;
+      }
+
+      if (cmd === '/whoami') {
+        const currentUsage = await fetchUsage(cfg.apiKey, cfg.apiBase);
+        console.log(renderWhoami({
+          email: cfg.email,
+          plan: cfg.plan,
+          apiKey: cfg.apiKey,
+          apiBase: cfg.apiBase,
+          usage: currentUsage,
+          currentMode,
+        }));
+        rl.prompt();
+        return;
+      }
+
+      if (cmd === '/agent' || cmd === '/subagent') {
+        const role = parts[1];
+        const task = parts.slice(2).join(' ');
+        if (!role || !task) {
+          console.log(`\n  ${C.rose}Uso:${C.reset} ${C.bold}/agent <rol> <tarea>${C.reset}`);
+          console.log(`  ${C.gray}Ejemplo: /agent Auditor "Analiza el archivo src/agent.js en busca de fugas"${C.reset}\n`);
+          rl.prompt();
+          return;
+        }
+        rl.pause();
+        try {
+          const result = await Tools.invoke_subagent({ role, task }, { cfg, streamCompletion });
+          if (result.report) {
+            console.log(`\n${C.granateDark}─────────────────────────────────────────────────────────────${C.reset}`);
+            console.log(result.report);
+            console.log(`${C.granateDark}─────────────────────────────────────────────────────────────${C.reset}\n`);
+          }
+        } catch (err) {
+          console.log(Status.error(err.message));
+        }
+        rl.resume();
+        rl.prompt();
+        return;
+      }
+
+      if (cmd === '/config') {
+        const key = parts[1]?.toLowerCase();
+        const val = parts[2];
+        if (key === 'endpoint' && val) {
+          cfg.apiBase = val.replace(/\/+$/, '');
+          cfg.isCustomEndpoint = !cfg.apiBase.includes('deiza.org');
+          saveConfig(cfg);
+          console.log(`  ${C.green}✓ Endpoint actualizado a:${C.reset} ${cfg.apiBase}\n`);
+        } else if (key === 'mode' && (val === 'build' || val === 'plan')) {
+          currentMode = val;
+          cfg.defaultMode = val;
+          saveConfig(cfg);
+          console.log(`  ${C.green}✓ Modo por defecto guardado en ${val.toUpperCase()}${C.reset}\n`);
+          rl.setPrompt(getPrompt());
+        } else {
+          console.log(`\n${C.granateDark}┌─ ${C.bold}${C.granateBright}Configuración Local Deiza Code${C.reset} ${C.granateDark}${'─'.repeat(25)}┐${C.reset}`);
+          console.log(`  ${C.granateDark}│${C.reset}  ${C.white}Ruta de configuración:${C.reset}  ${C.gray}~/.deiza/config.json${C.reset}`);
+          console.log(`  ${C.granateDark}│${C.reset}  ${C.white}Endpoint API:${C.reset}           ${C.gray}${cfg.apiBase}${C.reset}`);
+          console.log(`  ${C.granateDark}│${C.reset}  ${C.white}Modelo por defecto:${C.reset}     ${C.gray}${cfg.model}${C.reset}`);
+          console.log(`  ${C.granateDark}│${C.reset}  ${C.white}Modo actual:${C.reset}            ${currentMode === 'plan' ? `${C.cyan}[PLAN]` : `${C.rose}[BUILD]`}${C.reset}`);
+          console.log(`  ${C.granateDark}│${C.reset}  ${C.white}Cuenta conectada:${C.reset}       ${C.gray}${cfg.email || 'No iniciada'}${C.reset}`);
+          console.log(`${C.granateDark}└────────────────────────────────────────────────────────────┘${C.reset}`);
+          console.log(`  ${C.gray}Ajusta valores con: /config endpoint <url> o /config mode <build|plan>${C.reset}\n`);
+        }
+        rl.prompt();
+        return;
+      }
+
+      if (cmd === '/update') {
+        console.log(`\n  ${C.gray}Comprobando actualizaciones de Deiza Code...${C.reset}`);
+        const remoteVer = await checkLatestVersion();
+        const localVer = VERSION;
+
+        if (!remoteVer) {
+          console.log(`  ${C.gold}ℹ No se pudo contactar el servidor de versiones. Descargando instalador oficial...${C.reset}`);
+        } else if (remoteVer.version === localVer) {
+          console.log(`  ${C.green}✓ Ya estás en la versión más reciente de Deiza Code (v${localVer}).${C.reset}\n`);
+          rl.prompt();
+          return;
+        } else {
+          console.log(`  ${C.cyan}● Nueva versión detectada:${C.reset} ${C.white}v${localVer}${C.reset} ➜ ${C.bold}${C.green}v${remoteVer.version}${C.reset}`);
+          if (remoteVer.notes) console.log(`  ${C.gray}Novedades: ${remoteVer.notes}${C.reset}`);
+        }
+
+        const approved = await confirmAction('¿Deseas descargar e instalar la actualización ahora? [S/n]: ');
+        if (!approved) {
+          console.log(`  ${C.gray}Actualización cancelada.${C.reset}\n`);
+          rl.prompt();
+          return;
+        }
+
+        console.log(`\n  ${C.granateBright}●${C.reset} ${C.white}Actualizando Deiza Code en tu sistema...${C.reset}`);
+        rl.pause();
+        try {
+          await runAutoUpdate();
+          console.log(`  ${C.green}✓ ¡Deiza Code actualizado con éxito!${C.reset}`);
+          console.log(`  ${C.gray}Reinicia tu terminal o ejecuta 'deiza' para disfrutar de la nueva versión.${C.reset}\n`);
+        } catch (err) {
+          console.log(Status.error(`Error durante la actualización: ${err.message}`));
+        }
+        rl.resume();
         rl.prompt();
         return;
       }
@@ -277,8 +434,9 @@ async function startRepl(initialConfig) {
       if (cmd === '/logout') {
         cfg.apiKey = '';
         cfg.email = '';
+        cfg.plan = 'free';
         saveConfig(cfg);
-        console.log(`  ${C.green}✓ Sesión cerrada con éxito.${C.reset}\n`);
+        console.log(`  ${C.green}✓ Sesión cerrada con éxito. Credenciales locales eliminadas de ~/.deiza/config.json${C.reset}\n`);
         rl.prompt();
         return;
       }
@@ -288,7 +446,7 @@ async function startRepl(initialConfig) {
         return;
       }
 
-      console.log(`  ${C.granateBright}Comando desconocido:${C.reset} ${cmd}. Escribe /help para ver la lista.\n`);
+      console.log(`  ${C.granateBright}Comando desconocido:${C.reset} ${cmd}. Escribe / para ver la lista de comandos disponibles.\n`);
       rl.prompt();
       return;
     }

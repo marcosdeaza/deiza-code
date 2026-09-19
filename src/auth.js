@@ -17,13 +17,43 @@ function openBrowser(url) {
 }
 
 /**
+ * Validate an API key against Deiza backend
+ */
+async function validateApiKey(apiKey, apiBase = 'https://deiza.org') {
+  if (!apiKey) return { valid: false, error: 'API Key requerida.' };
+  if (!apiBase.includes('deiza.org')) {
+    return { valid: true, plan: 'custom', email: 'Endpoint Personalizado' };
+  }
+
+  const usage = await fetchUsage(apiKey, apiBase);
+  if (!usage) {
+    return { valid: false, error: 'API Key inválida o no autorizada en deiza.org.' };
+  }
+
+  if (usage.plan === 'free') {
+    return {
+      valid: false,
+      plan: 'free',
+      error: 'Deiza Code requiere un plan de pago activo (Friend o Signet). Actualiza en https://deiza.org/plans',
+    };
+  }
+
+  return {
+    valid: true,
+    plan: usage.plan,
+    email: usage.email || 'Usuario Deiza',
+    usage,
+  };
+}
+
+/**
  * Runs 1-click browser login flow with local loopback listener
  */
-async function runLoginFlow(currentConfig = {}) {
+async function runBrowserOAuthFlow(currentConfig = {}) {
   const state = crypto.randomBytes(16).toString('hex');
   const port = 54321;
 
-  console.log(`\n${C.granateBold}Conectando con Deiza...${C.reset}`);
+  console.log(`\n${C.granateBold}Conectando con Deiza mediante Navegador...${C.reset}`);
   console.log(`  ${C.gray}Abriendo navegador para autorizar tu terminal...${C.reset}`);
 
   return new Promise((resolve, reject) => {
@@ -44,7 +74,6 @@ async function runLoginFlow(currentConfig = {}) {
           const key = reqUrl.searchParams.get('key');
           const email = reqUrl.searchParams.get('email');
           const plan = reqUrl.searchParams.get('plan') || 'pro';
-          const incomingState = reqUrl.searchParams.get('state');
 
           if (!key) {
             res.writeHead(400, { 'Content-Type': 'text/html' });
@@ -88,7 +117,6 @@ async function runLoginFlow(currentConfig = {}) {
 
     server.on('error', (err) => {
       cleanup();
-      // If port 54321 is occupied, fallback to manual entry
       console.log(`  ${C.gold}ℹ Servidor local no disponible. Modo manual:${C.reset}`);
       fallbackManualLogin(authUrl, currentConfig).then(resolve).catch(reject);
     });
@@ -96,7 +124,6 @@ async function runLoginFlow(currentConfig = {}) {
     server.listen(port, '127.0.0.1', () => {
       openBrowser(authUrl);
 
-      // Timeout after 3 minutes
       setTimeout(() => {
         if (server) {
           cleanup();
@@ -109,29 +136,61 @@ async function runLoginFlow(currentConfig = {}) {
 }
 
 /**
- * Manual key input fallback
+ * Manual key input flow with backend verification
  */
 async function fallbackManualLogin(authUrl, currentConfig) {
   console.log(`\n  1. Abre este enlace en tu navegador: ${C.granate}${authUrl}${C.reset}`);
-  console.log(`  2. Inicia sesión y copia tu clave API (empieza por "dz_")\n`);
+  console.log(`  2. Inicia sesión y copia tu API Key (empieza por "dz_")\n`);
 
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  return new Promise((resolve) => {
-    rl.question(`  ${C.granateBold}Pega tu API Key de Deiza: ${C.reset}`, (key) => {
+  return new Promise((resolve, reject) => {
+    rl.question(`  ${C.granateBold}Pega tu API Key de Deiza: ${C.reset}`, async (key) => {
       rl.close();
       const trimmed = key.trim();
       if (!trimmed) {
-        throw new Error('API Key requerida');
+        return reject(new Error('API Key requerida'));
       }
+
+      console.log(`  ${C.gray}Verificando API Key con Deiza...${C.reset}`);
+      const check = await validateApiKey(trimmed, currentConfig.apiBase);
+      if (!check.valid) {
+        return reject(new Error(check.error));
+      }
+
       const newConfig = {
         ...currentConfig,
         apiKey: trimmed,
-        email: 'Usuario Deiza',
-        plan: 'pro',
+        email: check.email || 'Usuario Deiza',
+        plan: check.plan || 'pro',
       };
       saveConfig(newConfig);
-      console.log(`  ${C.green}✓ API Key configurada con éxito.${C.reset}\n`);
+      console.log(`  ${C.green}✓ ¡API Key verificada y configurada con éxito!${C.reset}`);
+      console.log(`  Cuenta: ${C.bold}${check.email}${C.reset} · Plan: ${C.granateBold}[${check.plan.toUpperCase()}]${C.reset}\n`);
       resolve(newConfig);
+    });
+  });
+}
+
+/**
+ * Main login flow: interactive choice between Browser and API Key
+ */
+async function runLoginFlow(currentConfig = {}) {
+  console.log(`\n${C.granateDark}┌─ ${C.bold}${C.granateBright}Conectar Cuenta de Deiza${C.reset} ${C.granateDark}${'─'.repeat(25)}┐${C.reset}`);
+  console.log(`  ${C.granateDark}│${C.reset}  ${C.bold}[1]${C.reset} ${C.white}Navegador Web${C.reset} ${C.gray}(Recomendado · 1 Clic con tu sesión activa)${C.reset}`);
+  console.log(`  ${C.granateDark}│${C.reset}  ${C.bold}[2]${C.reset} ${C.white}API Key Directa${C.reset} ${C.gray}(Para terminales SSH, Docker o Servidores)${C.reset}`);
+  console.log(`${C.granateDark}└────────────────────────────────────────────────────────┘${C.reset}`);
+
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((resolve, reject) => {
+    rl.question(`  ${C.rose}Selecciona opción [1/2] (Enter para 1): ${C.reset}`, async (ans) => {
+      rl.close();
+      const choice = ans.trim();
+      if (choice === '2') {
+        const authUrl = `${currentConfig.apiBase || 'https://deiza.org'}/cli/auth`;
+        fallbackManualLogin(authUrl, currentConfig).then(resolve).catch(reject);
+      } else {
+        runBrowserOAuthFlow(currentConfig).then(resolve).catch(reject);
+      }
     });
   });
 }
@@ -228,6 +287,7 @@ async function fetchUsage(apiKey, apiBase = 'https://deiza.org') {
 module.exports = {
   runLoginFlow,
   fallbackManualLogin,
+  validateApiKey,
   fetchModels,
   fetchUsage,
 };

@@ -126,23 +126,36 @@ npm install -g deiza-code
 
 ## 🕹️ Comandos en la Terminal (REPL)
 
-Dentro de la sesión interactiva de Deiza Code, dispones de comandos rápidos con `/`:
+> 💡 **Paleta Interactiva en Tiempo Real:** Al teclear `/` en la terminal, se despliega instantáneamente la lista de comandos disponibles con búsqueda en vivo. Presiona `Tab` para autocompletar cualquier comando.
 
 | Comando | Descripción |
 | :--- | :--- |
-| `/help` | Muestra la lista de comandos disponibles |
-| `/mode [plan\|build]` | Alterna entre modo BUILD (edición activa) y PLAN (arquitectura segura) |
-| `/plan` | Activa el modo PLAN (análisis sin mutar archivos) |
-| `/build` | Activa el modo BUILD (edición y ejecución de código) |
-| `/image <ruta> [p]` | Inspecciona una imagen o mockup con visión multimodal |
+| `/` | Despliega la paleta interactiva de comandos en vivo |
+| `/plan [query]` | Activa el modo PLAN (inspección arquitectónica y blueprint sin modificar archivos) |
+| `/build [query]` | Activa el modo BUILD (edición quirúrgica, diffs visuales y tests activos) |
+| `/mode [plan\|build]` | Alterna rápidamente entre modo BUILD y PLAN |
+| `/agent <rol> <tarea>` | Lanza un subagente worker aislado para auditar o investigar código |
+| `/image <ruta> [inst]` | Inspecciona una imagen, captura o mockup con visión multimodal |
+| `/whoami` | Muestra el perfil de usuario, plan (`Friend` / `Signet`), cuota y estado de la ventana |
+| `/update` | Comprueba y actualiza automáticamente Deiza Code a la última versión disponible |
 | `/model [id]` | Consulta o cambia el modelo en caliente |
 | `/usage` | Consulta el consumo de tokens y la cuenta atrás de la ventana de 5 horas |
-| `/endpoint [url]` | Conecta a otro endpoint de IA (Deiza, Ollama, OpenAI, vLLM) |
+| `/config` | Consulta o ajusta opciones locales (`~/.deiza/config.json`) |
+| `/endpoint [url]` | Conecta a otro endpoint de IA (Ollama, OpenAI, vLLM) |
 | `/init` | Crea un archivo de directivas `.deizarules` en la raíz de tu proyecto |
 | `/clear` | Limpia el historial de la conversación actual |
-| `/login` | Inicia sesión con tu cuenta de Deiza desde el navegador |
-| `/logout` | Cierra la sesión en el equipo actual |
+| `/login` | Inicia sesión con selector interactivo (Navegador Web 1-Clic o API Key directa) |
+| `/logout` | Cierra la sesión en el equipo actual y elimina credenciales locales |
+| `/help` | Muestra la ayuda detallada con ejemplos de uso |
 | `/exit` | Salir de Deiza Code |
+
+---
+
+## 🔐 Autenticación Flexible (Navegador o API Key)
+
+Deiza Code ofrece dos métodos de conexión integrados para adaptarse a cualquier flujo:
+1. **Navegador Web (Recomendado · 1 Clic):** Abre automáticamente tu navegador para autorizar la terminal de forma instantánea mediante loopback local en `127.0.0.1:54321`.
+2. **API Key Directa (`dz_...`):** Ideal para entornos remotos por SSH, contenedores Docker o servidores headless donde no hay navegador disponible. La clave se valida contra la API de Deiza verificando el plan activo (`Friend` o `Signet`).
 
 ---
 

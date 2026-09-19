@@ -133,6 +133,79 @@ function highlightMarkdown(text) {
     .replace(/\*\*([^*]+)\*\*/g, `${C.bold}$1${C.reset}`);
 }
 
+const COMMANDS_REGISTRY = [
+  { cmd: '/plan', args: '[query]', desc: 'Modo arquitectura: exploración y blueprint sin editar archivos', cat: 'Modos' },
+  { cmd: '/build', args: '[query]', desc: 'Modo implementación: edición quirúrgica, diffs y tests activos', cat: 'Modos' },
+  { cmd: '/mode', args: '[plan|build]', desc: 'Alternar entre modo BUILD y PLAN', cat: 'Modos' },
+  { cmd: '/agent', args: '<rol> <tarea>', desc: 'Lanzar un subagente worker aislado (ej: Auditor, Tester)', cat: 'Agentes' },
+  { cmd: '/image', args: '<ruta> [inst]', desc: 'Analizar capturas o maquetas con visión multimodal AWS', cat: 'Herramientas' },
+  { cmd: '/whoami', args: '', desc: 'Ver estado de tu cuenta, plan, tokens y cuota activa', cat: 'Cuenta' },
+  { cmd: '/usage', args: '', desc: 'Consultar consumo de tokens y ventana rodante de 5 horas', cat: 'Cuenta' },
+  { cmd: '/update', args: '', desc: 'Comprobar y actualizar Deiza Code a la última versión', cat: 'Sistema' },
+  { cmd: '/model', args: '[id]', desc: 'Consultar o alternar modelos de IA disponibles', cat: 'Configuración' },
+  { cmd: '/endpoint', args: '[url]', desc: 'Conectar a otro endpoint de IA (Ollama, vLLM, OpenAI)', cat: 'Configuración' },
+  { cmd: '/config', args: '', desc: 'Ver o modificar directivas y configuración local', cat: 'Configuración' },
+  { cmd: '/init', args: '', desc: 'Inicializar directivas .deizarules en la raíz del repo', cat: 'Proyecto' },
+  { cmd: '/clear', args: '', desc: 'Limpiar contexto de la conversación actual', cat: 'Sesión' },
+  { cmd: '/login', args: '', desc: 'Iniciar sesión (Navegador Web o API Key manual)', cat: 'Cuenta' },
+  { cmd: '/logout', args: '', desc: 'Cerrar sesión en esta máquina', cat: 'Cuenta' },
+  { cmd: '/help', args: '', desc: 'Ver guía completa de comandos y ejemplos de uso', cat: 'Ayuda' },
+  { cmd: '/exit', args: '', desc: 'Salir de Deiza Code', cat: 'Sesión' },
+];
+
+/**
+ * Renders an interactive command palette preview
+ */
+function renderCommandPalette(filter = '') {
+  const query = filter.trim().toLowerCase();
+  const matches = COMMANDS_REGISTRY.filter(c => {
+    if (!query || query === '/') return true;
+    const cleanQ = query.startsWith('/') ? query : `/${query}`;
+    return c.cmd.toLowerCase().startsWith(cleanQ) || c.desc.toLowerCase().includes(query.replace(/^\//, ''));
+  });
+
+  if (matches.length === 0) return '';
+
+  let out = `\n  ${C.granateDark}┌─ ${C.bold}${C.granateBright}Comandos Disponibles${C.reset} ${C.gray}(escribe para filtrar o presiona [Tab] para autocompletar)${C.reset} ${C.granateDark}${'─'.repeat(12)}┐${C.reset}\n`;
+  for (const item of matches.slice(0, 10)) {
+    const cmdStr = `${C.bold}${C.rose}${item.cmd}${C.reset}${item.args ? ` ${C.gray}${item.args}${C.reset}` : ''}`;
+    const rawCmdLen = item.cmd.length + (item.args ? item.args.length + 1 : 0);
+    const padLen = Math.max(2, 28 - rawCmdLen);
+    const padding = ' '.repeat(padLen);
+    out += `  ${C.granateDark}│${C.reset}   ${cmdStr}${padding}${C.white}${item.desc}${C.reset}\n`;
+  }
+  if (matches.length > 10) {
+    out += `  ${C.granateDark}│${C.reset}   ${C.gray}... y ${matches.length - 10} comandos más (escribe más letras para filtrar)${C.reset}\n`;
+  }
+  out += `  ${C.granateDark}└────────────────────────────────────────────────────────────────────────────────────────┘${C.reset}\n`;
+  return out;
+}
+
+/**
+ * Format /whoami account profile view
+ */
+function renderWhoami({ email, plan, apiKey, apiBase, usage, currentMode }) {
+  const isCustom = !apiBase.includes('deiza.org');
+  const usedPct = usage && usage.token_limit > 0 ? Math.round((usage.tokens_used / usage.token_limit) * 100) : 0;
+  const mins = usage?.reset_in_seconds ? Math.ceil(usage.reset_in_seconds / 60) : 0;
+  const resetText = mins > 0 ? `Se reinicia en ${Math.floor(mins / 60)}h ${mins % 60}m` : '0% (se iniciará al enviar un mensaje)';
+  const keySnippet = apiKey ? `${apiKey.slice(0, 8)}...${apiKey.slice(-4)}` : 'No configurada';
+
+  let content = '';
+  content += `${C.white}Cuenta / Usuario:${C.reset}   ${C.bold}${email || 'Conectada'}${C.reset}\n`;
+  content += `${C.white}Plan de Suscripción:${C.reset} ${C.granateBold}[${(plan || 'pro').toUpperCase()}]${C.reset} (Acceso completo Deiza Code)\n`;
+  content += `${C.white}Conexión:${C.reset}           ${isCustom ? `${C.gold}Endpoint Personalizado${C.reset}` : `${C.green}Nativo Deiza.org${C.reset}`}\n`;
+  content += `${C.white}API Key Guardada:${C.reset}   ${C.gray}${keySnippet}${C.reset}\n`;
+  content += `${C.white}Modo Terminal:${C.reset}      ${currentMode === 'plan' ? `${C.cyan}[PLAN] (Arquitectura segura)` : `${C.rose}[BUILD] (Edición quirúrgica)`}${C.reset}\n`;
+  if (!isCustom && usage) {
+    content += `${C.white}Tokens Utilizados:${C.reset}  ${usage.tokens_used.toLocaleString()} / ${usage.token_limit.toLocaleString()} (${usedPct}%)\n`;
+    content += `${C.white}Ventana 5 Horas:${C.reset}    ${C.gray}${resetText}${C.reset}\n`;
+  }
+  content += `${C.white}Motor de Inferencia:${C.reset} ${C.granateBright}Deiza Omniscient${C.reset} ${C.gray}[Liquid 5.1 · Amazon AWS Dedicated Cluster]${C.reset}`;
+
+  return box('Perfil de Usuario — Deiza Code', content, C.granate);
+}
+
 module.exports = {
   C,
   BANNER,
@@ -140,4 +213,7 @@ module.exports = {
   renderDiff,
   box,
   highlightMarkdown,
+  COMMANDS_REGISTRY,
+  renderCommandPalette,
+  renderWhoami,
 };
