@@ -271,6 +271,11 @@ async function streamCompletion({ apiBase, apiKey, model, messages, tools, onChu
         }));
         finish(null, { text: fullText, toolCalls, finishReason, usage });
       });
+      res.on('close', () => {
+        if (!res.complete && !settled) {
+          finish(new Error('La conexión con el motor se cerró antes de completar la respuesta.'));
+        }
+      });
       res.on('error', (err) => finish(err));
     });
 
@@ -283,6 +288,34 @@ async function streamCompletion({ apiBase, apiKey, model, messages, tools, onChu
     req.write(payload);
     req.end();
   });
+}
+
+/**
+ * Executes streamCompletion with automatic retry on transient connection drops or 502/503/504 errors
+ */
+async function streamCompletionWithRetry(params, maxRetries = 2) {
+  let lastErr;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      if (attempt > 0) {
+        const delay = attempt * 2000;
+        await new Promise(r => setTimeout(r, delay));
+      }
+      return await streamCompletion(params);
+    } catch (err) {
+      lastErr = err;
+      if (params.signal?.aborted || err.message === 'ABORTED' || err.message === 'PLAN_REQUIRED' || err.message === 'AUTH_EXPIRED' || err.message === 'USAGE_LIMIT_EXCEEDED') {
+        throw err;
+      }
+      const msg = String(err.message || '');
+      const isTransient = /timeout|inactividad|interrumpid|cerró antes|econnreset|econnrefused|socket|premature|502|503|504/i.test(msg) || (err.status >= 500 && err.status <= 504);
+      if (!isTransient || attempt === maxRetries) {
+        throw err;
+      }
+      process.stdout.write(`\n  \x1b[38;2;230;180;80m⚠ Conexión con el motor interrumpida (${err.message || 'error'}). Reanudando automáticamente... (${attempt + 1}/${maxRetries})\x1b[0m\n`);
+    }
+  }
+  throw lastErr;
 }
 
 /**
@@ -717,7 +750,7 @@ async function runAgentTurn({ cfg, messages, userInput, confirmCallback, mode = 
 
     let result;
     try {
-      result = await streamCompletion({
+      result = await streamCompletionWithRetry({
         apiBase: cfg.apiBase,
         apiKey: cfg.isCustomEndpoint ? (cfg.endpointKey || '') : cfg.apiKey,
         model: cfg.model,
@@ -920,6 +953,10 @@ async function runAgentTurn({ cfg, messages, userInput, confirmCallback, mode = 
     if (!toolCalls.length && looksUnfinished(assistantText) && !nudged) {
       nudged = true;
       messages.push({ role: 'user', content: 'Continúa y ejecuta la acción que acabas de anunciar con la herramienta correspondiente.' });
+      continue;
+    }
+    // Continuous autonomous loop: when tools were executed, continue to the next round so the model processes their results!
+    if (toolCalls.length > 0) {
       continue;
     }
     break;

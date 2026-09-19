@@ -319,7 +319,13 @@ const Tools = {
     return new Promise((resolve) => {
       const execCwd = cwd ? path.resolve(process.cwd(), cwd) : process.cwd();
       const limit = Math.min(Math.max(Number(timeout_ms) || 120000, 1000), 600000);
-      exec(command, { cwd: execCwd, timeout: limit, maxBuffer: 10 * 1024 * 1024, windowsHide: true }, (err, stdout, stderr) => {
+      exec(command, {
+        cwd: execCwd,
+        timeout: limit,
+        maxBuffer: 10 * 1024 * 1024,
+        windowsHide: true,
+        env: { ...process.env, CI: 'true', DEBIAN_FRONTEND: 'noninteractive' },
+      }, (err, stdout, stderr) => {
         resolve({
           command,
           exit_code: err ? (err.code || 1) : 0,
