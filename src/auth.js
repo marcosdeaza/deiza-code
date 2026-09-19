@@ -149,7 +149,7 @@ async function fetchUsage(apiKey, accountBase = DEFAULT_DEIZA_API) {
 
 async function fetchModels(apiKey, accountBase = DEFAULT_DEIZA_API) {
   const fallback = [
-    { id: 'deiza-omniscient', name: 'Deiza Omniscient', description: 'Motor autónomo Liquid 5.1 en clusters dedicados AWS' },
+    { id: 'deiza-omniscient', name: 'Deiza Omniscient', description: 'Motor autónomo Deiza Liquid 5.1 en infraestructura dedicada de Deiza' },
   ];
   const res = await jsonRequest('GET', `${accountBase}/api/code/models`, { apiKey, timeout: 5000 });
   if (res.ok && res.data && Array.isArray(res.data.models) && res.data.models.length) return res.data.models;

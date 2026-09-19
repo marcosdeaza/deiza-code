@@ -19,9 +19,15 @@ const DEIZA_DIR = path.join(os.homedir(), '.deiza');
 const CONFIG_FILE = path.join(DEIZA_DIR, 'config.json');
 const SESSIONS_DIR = path.join(DEIZA_DIR, 'sessions');
 
-const VERSION = '1.3.1';
+const VERSION = '1.4.0';
 const DEFAULT_DEIZA_API = 'https://deiza.org';
 const DEFAULT_MODEL = 'deiza-omniscient';
+
+// Build flavor. 'open' = the GitHub edition (any OpenAI-compatible engine can be plugged in);
+// 'closed' = the deiza.org installer edition (Deiza Omniscient only, no endpoint options).
+// The bundler injects DEIZA_FLAVOR; running from the source tree defaults to open.
+const FLAVOR = (typeof DEIZA_FLAVOR !== 'undefined' && DEIZA_FLAVOR) || process.env.DEIZA_FLAVOR || 'open';
+const IS_CLOSED = FLAVOR === 'closed';
 const MODES = ['build', 'copilot', 'plan'];
 const DEFAULT_MODE = 'build';
 
@@ -59,12 +65,12 @@ function loadConfig() {
     }
   }
 
-  // v1.2 saved whatever `apiBase` the OPENAI_BASE_URL hijack produced (often a Bedrock URL), so a
+  // v1.2 saved whatever `apiBase` the OPENAI_BASE_URL hijack produced (a third-party URL), so a
   // legacy `apiBase` is ignored: only an endpoint chosen explicitly with --endpoint / /endpoint
   // (stored as `endpoint`) or DEIZA_ENDPOINT counts as a custom inference endpoint.
   const accountBase = normalizeUrl(process.env.DEIZA_API_URL || DEFAULT_DEIZA_API);
-  const savedEndpoint = normalizeUrl(fileConfig.endpoint || '');
-  const endpoint = normalizeUrl(process.env.DEIZA_ENDPOINT || savedEndpoint);
+  const savedEndpoint = IS_CLOSED ? '' : normalizeUrl(fileConfig.endpoint || '');
+  const endpoint = IS_CLOSED ? '' : normalizeUrl(process.env.DEIZA_ENDPOINT || savedEndpoint);
   const apiBase = endpoint && !isDeizaHost(endpoint) ? endpoint : accountBase;
   const apiKey = String(process.env.DEIZA_API_KEY || fileConfig.apiKey || '').trim();
   const isCustom = apiBase !== accountBase;
@@ -100,6 +106,8 @@ function saveConfig(cfg) {
 
 module.exports = {
   VERSION,
+  FLAVOR,
+  IS_CLOSED,
   DEIZA_DIR,
   CONFIG_FILE,
   SESSIONS_DIR,

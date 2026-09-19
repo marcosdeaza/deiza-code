@@ -3,6 +3,14 @@ const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
 
+// node scripts/bundle.js [--flavor open|closed] [--out <file>]
+//   open   -> GitHub edition: any OpenAI-compatible engine can be plugged in (default)
+//   closed -> deiza.org installer edition: Deiza Omniscient only, no endpoint options
+const argv = process.argv.slice(2);
+const argValue = (flag, def) => { const i = argv.indexOf(flag); return i !== -1 && argv[i + 1] ? argv[i + 1] : def; };
+const FLAVOR = argValue('--flavor', 'open') === 'closed' ? 'closed' : 'open';
+const OUT = argValue('--out', FLAVOR === 'closed' ? 'dist/deiza-code-closed.js' : 'dist/deiza-code.js');
+
 function read(rel) {
   return fs.readFileSync(path.join(ROOT, rel), 'utf-8');
 }
@@ -22,12 +30,14 @@ const header = `#!/usr/bin/env node
 
 /**
  * DEIZA CODE — Autonomous Terminal Coding Agent
- * Official Standalone CLI Distribution
- * Powered by Deiza Omniscient (Liquid 5.1) on Amazon AWS Compute Clusters
+ * Official Standalone CLI Distribution (${FLAVOR === 'closed' ? 'Deiza Omniscient edition' : 'open edition'})
+ * Powered by Deiza Omniscient (Deiza Liquid 5.1)
  * https://deiza.org
  */
 
 'use strict';
+
+const DEIZA_FLAVOR = '${FLAVOR}';
 
 const fs = require('fs');
 const path = require('path');
@@ -77,11 +87,9 @@ const fullBundle = [
   binCode,
 ].join('\n\n');
 
-const distDir = path.join(ROOT, 'dist');
-if (!fs.existsSync(distDir)) fs.mkdirSync(distDir, { recursive: true });
-
-const bundlePath = path.join(distDir, 'deiza-code.js');
+const bundlePath = path.resolve(ROOT, OUT);
+fs.mkdirSync(path.dirname(bundlePath), { recursive: true });
 fs.writeFileSync(bundlePath, fullBundle, 'utf-8');
 fs.chmodSync(bundlePath, 0o755);
 
-console.log(`Bundled successfully to ${bundlePath} (${fs.statSync(bundlePath).size} bytes)`);
+console.log(`Bundled ${FLAVOR} edition to ${bundlePath} (${fs.statSync(bundlePath).size} bytes)`);

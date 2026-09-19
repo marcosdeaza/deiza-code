@@ -52,7 +52,7 @@ startup_lines = [
     ("  Autonomous Terminal Coding Agent · v1.2.0", C_GRAY),
     ("", C_WHITE),
     ("  Cuenta: marcos@deiza.org · [SIGNET] · Uso: 14% (4h 12m restantes)", C_WHITE),
-    ("  Modelo activo: Deiza Omniscient [Liquid 5.1 · Amazon AWS Cluster] (BETA)", C_GRANATE),
+    ("  Modelo activo: Deiza Omniscient [Deiza Liquid 5.1 · infraestructura dedicada]", C_GRANATE),
     ("  Workspace: /Users/marcos/projects/api-service [Node.js / TS] · git:main", C_GRAY),
     ("  ● Sesión persistente restaurada: ses_20260919_7a1b (6 mensajes guardados)", C_ROSE),
     ("  Usa /new para iniciar limpia o /history para ver sesiones anteriores.", C_GRAY),
@@ -160,7 +160,7 @@ for step in execution_steps:
 # 5. Hold final frame ~3.5s
 save_frame(base_lines, hold=45)
 
-gif_output = "/Users/marcos/.gemini/antigravity/scratch/deiza-code/assets/demo.gif"
+gif_output = "assets/demo.gif"
 palette = os.path.join(frames_dir, "palette.png")
 
 print(f"Generated {frame_idx} frames. Compiling high-fidelity GIF with ffmpeg...")

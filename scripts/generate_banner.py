@@ -84,12 +84,12 @@ draw.text((kicker_x + deiza_w, title_y), "CODE", font=font_title, fill=(225, 112
 # 6. Tagline
 sub_y = title_y + 86 * SCALE
 draw.text((kicker_x, sub_y), "Autonomous AI Terminal Pair Programmer", font=font_tag, fill=(255, 255, 255, 240))
-draw.text((kicker_x, sub_y + 32 * SCALE), "Dedicated AWS Bedrock Clusters · Zero Queue Latency", font=font_mono_small, fill=(180, 180, 195, 200))
+draw.text((kicker_x, sub_y + 32 * SCALE), "Deiza Omniscient · Dedicated Clusters · Zero Queue Latency", font=font_mono_small, fill=(180, 180, 195, 200))
 
 # 7. Sleek Pill badges (arranged in two clean compact rows on left side)
 pill_row1 = [
-    "AWS DEDICATED CLUSTER",
-    "BUILD & PLAN MODES",
+    "DEDICATED CLUSTER",
+    "BUILD · COPILOT · PLAN",
 ]
 pill_row2 = [
     "MULTI-AGENT WORKERS",

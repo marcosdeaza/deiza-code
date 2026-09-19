@@ -9,7 +9,7 @@ const https = require('https');
 const { exec } = require('child_process');
 const readline = require('readline');
 const { C, BANNER, Status, box, COMMANDS_REGISTRY, MODE_INFO, modeBadge, renderModes, renderCommandPalette, renderWhoami, renderSessionList, renderSessionInfo } = require('./ui');
-const { loadConfig, saveConfig, DEFAULT_MODEL, VERSION, MODES, normalizeMode, normalizeUrl, isDeizaHost } = require('./config');
+const { loadConfig, saveConfig, DEFAULT_MODEL, VERSION, MODES, IS_CLOSED, normalizeMode, normalizeUrl, isDeizaHost } = require('./config');
 const { runLoginFlow, ensureAuthenticated, fetchModels, fetchUsage } = require('./auth');
 const { runAgentTurn, streamCompletion } = require('./agent');
 const { Tools } = require('./tools');
@@ -105,7 +105,7 @@ function printHeader(cfg, currentMode, models) {
     console.log(`  ${C.white}Motor:${C.reset} ${C.gold}Endpoint personalizado${C.reset} ${C.gray}${cfg.apiBase}${C.reset} · ${C.white}Modelo:${C.reset} ${C.granateBright}${cfg.model}${C.reset}`);
   } else {
     const label = (cfg.model.includes('omniscient') || cfg.model.includes('liquid'))
-      ? `${C.granateBright}Deiza Omniscient${C.reset} ${C.gray}[Liquid 5.1 · Amazon AWS Cluster]${C.reset}`
+      ? `${C.granateBright}Deiza Omniscient${C.reset} ${C.gray}[Deiza Liquid 5.1 · infraestructura dedicada]${C.reset}`
       : `${C.granateBright}${cfg.model}${C.reset}`;
     console.log(`  ${C.white}Motor:${C.reset} ${label}`);
   }
@@ -402,7 +402,7 @@ async function startRepl(initialConfig) {
         const pct = ((total / maxTokens) * 100).toFixed(2);
         const remaining = Math.max(0, maxTokens - total);
         let content = '';
-        content += `${C.white}Motor de Inferencia:${C.reset}     ${C.granateBright}${cfg.isCustomEndpoint ? cfg.model : 'deiza-omniscient'}${C.reset} ${cfg.isCustomEndpoint ? `${C.gray}(${cfg.apiBase})${C.reset}` : `${C.gray}(Liquid 5.1 / Kimi K2.5 · AWS Dedicated)${C.reset}`}\n`;
+        content += `${C.white}Motor de Inferencia:${C.reset}     ${C.granateBright}${cfg.isCustomEndpoint ? cfg.model : 'deiza-omniscient'}${C.reset} ${cfg.isCustomEndpoint ? `${C.gray}(${cfg.apiBase})${C.reset}` : `${C.gray}(Deiza Liquid 5.1 · infraestructura dedicada)${C.reset}`}\n`;
         content += `${C.white}Ventana de Contexto:${C.reset}     ${C.bold}1,000,000 (1M)${C.reset} tokens de sesión\n`;
         content += `${C.white}Tokens en Contexto:${C.reset}      ${C.bold}${C.green}${total.toLocaleString()}${C.reset} / 1,000,000 tokens (${pct}% ocupado)\n`;
         content += `${C.white}Capacidad Disponible:${C.reset}    ${C.bold}${remaining.toLocaleString()}${C.reset} tokens libres\n\n`;
@@ -497,7 +497,7 @@ async function startRepl(initialConfig) {
         const key = parts[1]?.toLowerCase();
         const val = parts[2];
         if (key === 'endpoint' && val) {
-          applyEndpoint(val);
+          if (IS_CLOSED) closedOnlyNotice(); else applyEndpoint(val);
         } else if (key === 'mode' && MODES.includes((val || '').toLowerCase())) {
           setMode(val, { persist: true });
         } else {
@@ -508,7 +508,7 @@ async function startRepl(initialConfig) {
           console.log(`  ${C.granateDark}│${C.reset}  ${C.white}Modelo:${C.reset}                 ${C.gray}${cfg.model}${C.reset}`);
           console.log(`  ${C.granateDark}│${C.reset}  ${C.white}Modo actual:${C.reset}            ${modeBadge(currentMode)} ${C.gray}(por defecto: ${cfg.defaultMode || 'build'})${C.reset}`);
           console.log(`${C.granateDark}└────────────────────────────────────────────────────────────┘${C.reset}`);
-          console.log(`  ${C.gray}Ajusta valores con: /config endpoint <url|deiza> · /config mode <build|copilot|plan>${C.reset}\n`);
+          console.log(`  ${C.gray}Ajusta valores con: ${IS_CLOSED ? '' : '/config endpoint <url|deiza> · '}/config mode <build|copilot|plan>${C.reset}\n`);
         }
         rl.prompt();
         return;
@@ -575,15 +575,17 @@ async function startRepl(initialConfig) {
         if (!cfg.isCustomEndpoint) {
           if (targetModel && targetModel.toLowerCase() !== DEFAULT_MODEL) {
             console.log(`\n  ${C.granateBright}✖ Modelo no válido:${C.reset} "${targetModel}"`);
-            console.log(`  En el motor nativo de Deiza el único modelo disponible es ${C.bold}deiza-omniscient${C.reset}.`);
-            console.log(`  ${C.gray}Para usar modelos locales o de terceros (Ollama, vLLM, OpenAI): /endpoint <url>${C.reset}\n`);
+            console.log(`  Deiza Code funciona con el motor ${C.bold}deiza-omniscient${C.reset}.`);
+            if (!IS_CLOSED) console.log(`  ${C.gray}Para usar modelos locales o de terceros (Ollama, vLLM, OpenAI): /endpoint <url>${C.reset}`);
+            console.log('');
           } else {
             cfg.model = DEFAULT_MODEL;
             saveConfig(cfg);
-            console.log(`\n${C.granateBold}Motor dedicado de Deiza Code:${C.reset}`);
-            console.log(`  ${C.green}●${C.reset} ${C.bold}deiza-omniscient${C.reset} (Liquid 5.1 · Kimi K2.5)`);
-            console.log(`    ${C.gray}Infraestructura:${C.reset}  Amazon AWS Dedicated High-Compute Clusters`);
-            console.log(`    ${C.gray}Especialidad:${C.reset}    Diffs quirúrgicos, multiagentes, visión y ejecución autónoma\n`);
+            console.log(`\n${C.granateBold}Motor de Deiza Code:${C.reset}`);
+            console.log(`  ${C.green}●${C.reset} ${C.bold}deiza-omniscient${C.reset} (Deiza Liquid 5.1)`);
+            console.log(`    ${C.gray}Infraestructura:${C.reset}  Clusters dedicados de Deiza`);
+            console.log(`    ${C.gray}Especialidad:${C.reset}    Diffs quirúrgicos, multiagentes, visión y ejecución autónoma`);
+            console.log(`    ${C.gray}Uso:${C.reset}             Se descuenta de la cuota de tu plan (${String(cfg.plan || '').toUpperCase()}) · /usage\n`);
           }
         } else if (targetModel) {
           cfg.model = targetModel;
@@ -599,6 +601,11 @@ async function startRepl(initialConfig) {
       }
 
       if (cmd === '/endpoint') {
+        if (IS_CLOSED) {
+          closedOnlyNotice();
+          rl.prompt();
+          return;
+        }
         const target = parts[1];
         if (target) {
           applyEndpoint(target, parts[2]);
@@ -696,6 +703,11 @@ async function startRepl(initialConfig) {
     rl.setPrompt(getPrompt());
     rl.prompt();
   });
+
+  function closedOnlyNotice() {
+    console.log(`\n  ${C.gold}Esta edición de Deiza Code funciona en exclusiva con ${C.bold}Deiza Omniscient${C.reset}${C.gold} y tu cuenta de Deiza.${C.reset}`);
+    console.log(`  ${C.gray}La edición open source con soporte de otros motores está en github.com/marcosdeaza/deiza-code${C.reset}\n`);
+  }
 
   function applyEndpoint(target, modelArg) {
     const t = String(target || '').trim().toLowerCase();

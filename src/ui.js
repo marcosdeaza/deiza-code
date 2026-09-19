@@ -3,7 +3,7 @@
  * Granate / Burgundy palette (#8C2F39) with clean, modern developer UX.
  */
 
-const { VERSION } = require('./config');
+const { VERSION, IS_CLOSED } = require('./config');
 
 const C = {
   reset: '\x1b[0m',
@@ -231,7 +231,7 @@ function renderWhoami({ email, name, plan, apiKey, apiBase, isCustom, usage, cur
     content += `${C.white}Tokens Utilizados:${C.reset}  ${usage.tokens_used.toLocaleString()} / ${usage.token_limit.toLocaleString()} (${usedPct}%)\n`;
     content += `${C.white}Ventana 5 Horas:${C.reset}    ${C.gray}${resetText}${C.reset}\n`;
   }
-  content += `${C.white}Motor de Inferencia:${C.reset} ${isCustom ? `${C.granateBright}${C.reset}` : `${C.granateBright}Deiza Omniscient${C.reset} ${C.gray}[Liquid 5.1 · Amazon AWS Dedicated Cluster]${C.reset}`}`;
+  content += `${C.white}Motor de Inferencia:${C.reset} ${isCustom ? `${C.granateBright}${C.reset}` : `${C.granateBright}Deiza Omniscient${C.reset} ${C.gray}[Deiza Liquid 5.1 · infraestructura dedicada]${C.reset}`}`;
 
   return box('Perfil de Usuario — Deiza Code', content, C.granate);
 }

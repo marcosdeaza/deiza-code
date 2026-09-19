@@ -29,17 +29,26 @@ Mira a **Deiza Code** analizando el repositorio, realizando preguntas interactiv
 
 ## ✨ ¿Qué es Deiza Code?
 
-**Deiza Code** es un agente agéntico de desarrollo para terminal inspirado en la velocidad, ergonomía y precisión de *Claude Code*. 
+**Deiza Code** es un agente agéntico de desarrollo para terminal inspirado en la velocidad, ergonomía y precisión de *Claude Code*.
 
-Impulsado en exclusiva por el modelo **Deiza Omniscient (Liquid 5.1)**, conectado a clusters de alta capacidad en Amazon AWS para garantizar velocidad extrema y diffs quirúrgicos sin colas de espera. Disponible exclusivamente para cuentas con **planes de pago (Friend o Signet)** con sincronización de créditos y ventana de 5 horas mediante inicio de sesión en un solo clic desde tu navegador.
+Impulsado por el modelo **Deiza Omniscient (Deiza Liquid 5.1)** en la infraestructura dedicada de Deiza: diffs quirúrgicos, ejecución autónoma y visión, sin colas de espera. Requiere una cuenta de Deiza con **plan de pago (Friend o Signet)**: la cuota se sincroniza con tu ventana de uso de 5 horas y el login se hace en un clic desde el navegador.
 
-> 🚀 **Cero Lock-in:** Aunque tira de forma nativa de la infraestructura de **deiza.org**, el motor está desacoplado para que puedas **reciclarlo y reutilizarlo como CLI agéntica con cualquier otro proyecto o endpoint de IA** (Ollama, OpenAI, DeepSeek, vLLM, LM Studio, etc.).
+### Dos ediciones, un mismo código
+
+| | Edición **open** (este repositorio) | Edición **Deiza** (instalador de deiza.org) |
+| :--- | :--- | :--- |
+| Login con cuenta de Deiza | Obligatorio | Obligatorio |
+| Motor por defecto | Deiza Omniscient | Deiza Omniscient |
+| Otros motores (`--endpoint`, `/endpoint`) | Sí: cualquier servidor OpenAI-compatible (Ollama, vLLM, LM Studio, OpenAI…) | No: funciona en exclusiva con Deiza Omniscient y tu cuota |
+| Build | `node scripts/bundle.js` | `node scripts/bundle.js --flavor closed` |
+
+> 🚀 **Cero Lock-in en la edición open:** el motor está desacoplado para que puedas **reciclar Deiza Code como CLI agéntica con cualquier otro proyecto o endpoint de IA**.
 
 ---
 
-## 🔄 Reciclaje Universal: Usa Cualquier IA
+## 🔄 Reciclaje Universal: Usa Cualquier IA (edición open)
 
-Deiza Code siempre arranca con tu **cuenta de Deiza** (plan Friend o Signet). Una vez dentro, puedes cambiar el motor que responde por **cualquier modelo o proveedor** que soporte la especificación estándar OpenAI `/chat/completions`:
+Deiza Code siempre arranca con tu **cuenta de Deiza** (plan Friend o Signet). En la edición open, una vez dentro puedes cambiar el motor que responde por **cualquier modelo o proveedor** que soporte la especificación estándar OpenAI `/chat/completions`:
 
 ### 1. Con Ollama en local (DeepSeek-Coder, Llama 3, Qwen)
 ```bash
@@ -111,6 +120,8 @@ curl -fsSL https://deiza.org/install.sh | bash
 irm https://deiza.org/install.ps1 | iex
 ```
 
+> Los instaladores de deiza.org distribuyen la **edición Deiza** (solo Deiza Omniscient). Para la edición open, clona este repositorio o instala por npm.
+
 ### 🧠 Neural / AI Agent (Instalación Desatendida)
 Pega este prompt directamente en tu agente de IA (Claude Code, Antigravity, Cursor, etc.):
 ```text
@@ -150,7 +161,7 @@ npm install -g deiza-code
 | `/model [id]` | Consulta o cambia el modelo en caliente |
 | `/usage` | Consulta el consumo de tokens y la cuenta atrás de la ventana de 5 horas |
 | `/config` | Consulta o ajusta opciones locales (`~/.deiza/config.json`) |
-| `/endpoint [url\|deiza]` | Usa otro motor OpenAI-compatible (Ollama, OpenAI, vLLM) o vuelve a Deiza |
+| `/endpoint [url\|deiza]` | Usa otro motor OpenAI-compatible (Ollama, OpenAI, vLLM) o vuelve a Deiza *(solo edición open)* |
 | `/init` | Crea un archivo de directivas `.deizarules` en la raíz de tu proyecto |
 | `/clear` | Limpia el historial de la conversación actual |
 | `/login` | Inicia sesión con selector interactivo (Navegador Web 1-Clic o API Key directa) |
@@ -186,9 +197,9 @@ Opciones:
   -p, --prompt <texto>  Ejecuta una instrucción directa en modo no interactivo
   --login               Vuelve a iniciar sesión con tu cuenta de Deiza
   --logout              Cierra la sesión guardada en esta máquina
-  --endpoint <url>      Motor OpenAI-compatible alternativo (Ollama, vLLM, OpenAI...)
-  --model <id>          Modelo del endpoint alternativo
-  --key <apiKey>        Clave del endpoint alternativo (si la requiere)
+  --endpoint <url>      Motor OpenAI-compatible alternativo (Ollama, vLLM, OpenAI...)  [edición open]
+  --model <id>          Modelo del endpoint alternativo                                [edición open]
+  --key <apiKey>        Clave del endpoint alternativo (si la requiere)                [edición open]
 ```
 
 ---
@@ -216,6 +227,8 @@ deiza-code/
 ├── examples/
 │   ├── custom-endpoint.sh # Ejemplos de integración con Ollama y OpenAI
 │   └── deizarules.example # Plantilla de directivas de desarrollo
+├── scripts/
+│   └── bundle.js         # Empaqueta todo en un solo archivo (--flavor open|closed)
 ├── package.json
 └── README.md
 ```

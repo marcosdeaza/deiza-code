@@ -6,7 +6,7 @@
 
 const readline = require('readline');
 const { C, Status, renderSessionList, renderSessionInfo, box } = require('../src/ui');
-const { loadConfig, saveConfig, VERSION, DEFAULT_MODEL, MODES, normalizeUrl, isDeizaHost } = require('../src/config');
+const { loadConfig, saveConfig, VERSION, DEFAULT_MODEL, MODES, IS_CLOSED, normalizeUrl, isDeizaHost } = require('../src/config');
 const { ensureAuthenticated, askLine } = require('../src/auth');
 const { startRepl } = require('../src/index');
 const { runAgentTurn } = require('../src/agent');
@@ -29,21 +29,22 @@ Opciones:
   -h, --help            Muestra este mensaje de ayuda
   -p, --prompt <texto>  Ejecuta una instrucción directa en modo no interactivo
   --login               Vuelve a iniciar sesión con tu cuenta de Deiza
-  --logout              Cierra la sesión guardada en esta máquina
+  --logout              Cierra la sesión guardada en esta máquina${IS_CLOSED ? '' : `
   --endpoint <url>      Motor OpenAI-compatible alternativo (Ollama, vLLM, OpenAI...)
   --model <id>          Modelo del endpoint alternativo
-  --key <apiKey>        Clave del endpoint alternativo (si la requiere)
+  --key <apiKey>        Clave del endpoint alternativo (si la requiere)`}
 
 Subcomandos:
   deiza session list|new|delete|info
   deiza tokens
 
-Deiza Code siempre necesita una cuenta de Deiza con plan de pago (Friend o Signet).
+Deiza Code siempre necesita una cuenta de Deiza con plan de pago (Friend o Signet).${IS_CLOSED ? `
+Motor: Deiza Omniscient (Deiza Liquid 5.1), con la cuota de uso de tu plan.` : ''}
 Ejemplos:
   deiza
   deiza --copilot
-  deiza -p "añade tests a src/utils.js"
-  deiza --endpoint http://localhost:11434 --model llama3
+  deiza -p "añade tests a src/utils.js"${IS_CLOSED ? '' : `
+  deiza --endpoint http://localhost:11434 --model llama3`}
 `);
 }
 
@@ -54,7 +55,7 @@ function printTokens(ses) {
   const pct = ((total / maxTokens) * 100).toFixed(2);
   const remaining = Math.max(0, maxTokens - total);
   let content = '';
-  content += `${C.white}Motor de Inferencia:${C.reset}     ${C.granateBright}deiza-omniscient${C.reset} ${C.gray}(Liquid 5.1 / Kimi K2.5 · AWS Dedicated)${C.reset}\n`;
+  content += `${C.white}Motor de Inferencia:${C.reset}     ${C.granateBright}deiza-omniscient${C.reset} ${C.gray}(Deiza Liquid 5.1 · infraestructura dedicada)${C.reset}\n`;
   content += `${C.white}Ventana de Contexto:${C.reset}     ${C.bold}1,000,000 (1M)${C.reset} tokens de sesión\n`;
   content += `${C.white}Tokens en Contexto:${C.reset}      ${C.bold}${C.green}${total.toLocaleString()}${C.reset} / 1,000,000 tokens (${pct}% ocupado)\n`;
   content += `${C.white}Capacidad Disponible:${C.reset}    ${C.bold}${remaining.toLocaleString()}${C.reset} tokens libres\n\n`;
@@ -138,7 +139,10 @@ async function main() {
   let inlinePrompt = null;
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
-    if (a === '--endpoint' && args[i + 1]) {
+    if ((a === '--endpoint' || a === '--model' || a === '--key') && IS_CLOSED) {
+      console.log(`  ${C.gold}Opción ${a} ignorada: esta edición de Deiza Code funciona en exclusiva con Deiza Omniscient.${C.reset}`);
+      consumed.add(i); if (args[i + 1] && !args[i + 1].startsWith('-')) { consumed.add(i + 1); i++; }
+    } else if (a === '--endpoint' && args[i + 1]) {
       const url = normalizeUrl(args[i + 1]);
       if (url && !isDeizaHost(url)) {
         cfg.endpoint = url;
