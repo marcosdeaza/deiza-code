@@ -111,9 +111,10 @@ try {
     $CmdCodePath = Join-Path $BinDir "deiza-code.cmd"
     $Ps1Path = Join-Path $BinDir "deiza.ps1"
 
-    # 3. Descarga del ejecutable oficial
+    # 3. Descarga del ejecutable oficial (sin caché)
     Write-Host "  ● Descargando el motor de Deiza Code..." -ForegroundColor DarkYellow -NoNewline
-    Invoke-WebRequest -Uri "https://deiza.org/downloads/deiza-code.js" -OutFile $ScriptPath -UseBasicParsing
+    $Timestamp = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+    Invoke-WebRequest -Uri "https://deiza.org/downloads/deiza-code.js?v=$Timestamp" -OutFile $ScriptPath -Headers @{ "Cache-Control" = "no-cache"; "Pragma" = "no-cache" } -UseBasicParsing
     Write-Host " [OK]" -ForegroundColor Green
 
     # 4. Configuración de wrappers ejecutables para CMD y PowerShell
