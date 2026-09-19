@@ -108,13 +108,18 @@ async function streamCompletion({ apiBase, apiKey, model, messages, onChunk, max
       if (err) reject(err); else resolve(value);
     };
 
+    const native = isDeizaHost(apiBase);
     const req = client.request(url, { method: 'POST', headers, timeout: 180000 }, (res) => {
-      if (res.statusCode === 401) return finish(new Error('AUTH_EXPIRED'));
-      if (res.statusCode === 403 || res.statusCode === 402) {
+      if (res.statusCode === 401 && native) return finish(new Error('AUTH_EXPIRED'));
+      if ((res.statusCode === 403 || res.statusCode === 402) && native) {
         let b = '';
         res.on('data', c => { b += c; });
         res.on('end', () => finish(new Error(describeApiError(res.statusCode, b) === 'PLAN_REQUIRED' ? 'PLAN_REQUIRED' : 'AUTH_EXPIRED')));
         return;
+      }
+      if ((res.statusCode === 401 || res.statusCode === 403) && !native) {
+        res.resume();
+        return finish(new Error(`El endpoint ${url.origin} rechazó la clave (${res.statusCode}). Configúrala con --key <clave> o DEIZA_ENDPOINT_KEY, o vuelve al motor nativo con /endpoint deiza.`));
       }
       if (res.statusCode === 429) return finish(new Error('USAGE_LIMIT_EXCEEDED'));
       if (res.statusCode >= 400) {

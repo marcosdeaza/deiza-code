@@ -19,7 +19,7 @@ const DEIZA_DIR = path.join(os.homedir(), '.deiza');
 const CONFIG_FILE = path.join(DEIZA_DIR, 'config.json');
 const SESSIONS_DIR = path.join(DEIZA_DIR, 'sessions');
 
-const VERSION = '1.3.0';
+const VERSION = '1.3.1';
 const DEFAULT_DEIZA_API = 'https://deiza.org';
 const DEFAULT_MODEL = 'deiza-omniscient';
 const MODES = ['build', 'copilot', 'plan'];
@@ -59,14 +59,19 @@ function loadConfig() {
     }
   }
 
-  // Older versions stored the inference endpoint in `apiBase` and used it for login too.
-  // A saved non-Deiza apiBase is now treated as a custom inference endpoint only.
+  // v1.2 saved whatever `apiBase` the OPENAI_BASE_URL hijack produced (often a Bedrock URL), so a
+  // legacy `apiBase` is ignored: only an endpoint chosen explicitly with --endpoint / /endpoint
+  // (stored as `endpoint`) or DEIZA_ENDPOINT counts as a custom inference endpoint.
   const accountBase = normalizeUrl(process.env.DEIZA_API_URL || DEFAULT_DEIZA_API);
-  const savedEndpoint = normalizeUrl(fileConfig.endpoint || fileConfig.apiBase || '');
+  const savedEndpoint = normalizeUrl(fileConfig.endpoint || '');
   const endpoint = normalizeUrl(process.env.DEIZA_ENDPOINT || savedEndpoint);
   const apiBase = endpoint && !isDeizaHost(endpoint) ? endpoint : accountBase;
   const apiKey = String(process.env.DEIZA_API_KEY || fileConfig.apiKey || '').trim();
-  const model = String(process.env.DEIZA_MODEL || fileConfig.model || DEFAULT_MODEL).trim();
+  const isCustom = apiBase !== accountBase;
+  // The native engine has exactly one model; a stale "default"/"gpt-4o" from an old config is dropped.
+  const model = isCustom
+    ? String(process.env.DEIZA_MODEL || fileConfig.endpointModel || fileConfig.model || 'default').trim()
+    : DEFAULT_MODEL;
 
   return {
     ...fileConfig,
@@ -81,7 +86,7 @@ function loadConfig() {
     endpointKey: String(process.env.DEIZA_ENDPOINT_KEY || fileConfig.endpointKey || '').trim(),
     endpointModel: fileConfig.endpointModel || '',
     defaultMode: normalizeMode(fileConfig.defaultMode),
-    isCustomEndpoint: apiBase !== accountBase,
+    isCustomEndpoint: isCustom,
   };
 }
 
