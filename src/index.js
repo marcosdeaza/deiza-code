@@ -163,7 +163,7 @@ async function startRepl(initialConfig) {
     activeSession = createSession(process.cwd(), currentMode);
   }
 
-  console.log(`  ${C.gray}Escribe ${C.rose}/ ${C.gray}para ver comandos, o escribe tu petición directamente. ${C.darkGray}Esc interrumpe una petición en curso.${C.reset}\n`);
+  console.log(`  ${C.gray}Escribe ${C.granateBright}/ ${C.gray}para ver comandos, o escribe tu petición directamente. ${C.darkGray}Esc interrumpe una petición en curso.${C.reset}\n`);
 
   const getPrompt = () => {
     const curTokens = getActiveContextTokens(messages);
@@ -172,7 +172,7 @@ async function startRepl(initialConfig) {
       : curTokens >= 1000 ? `${(curTokens / 1000).toFixed(1)}k` : `${curTokens}`;
     const pctLabel = curTokens > 0 ? `${((curTokens / 1000000) * 100).toFixed(1)}%` : '0%';
     const contextBadge = `${C.darkGray}[${C.gold}${tokLabel}${C.darkGray}/1M · ${pctLabel}]${C.reset}`;
-    return `${C.granateBold}deiza${C.reset} ${modeBadge(currentMode)} ${contextBadge} ${C.roseBold}❯${C.reset} `;
+    return `${C.granateBold}deiza${C.reset} ${modeBadge(currentMode)} ${contextBadge} ${C.granateBright}❯${C.reset} `;
   };
 
   const slashCompleter = (line) => {

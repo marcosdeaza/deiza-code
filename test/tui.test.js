@@ -7,8 +7,8 @@ console.log('Running TUI and High-Contrast UI Tests...\n');
 assert(C.bold.includes('97m'), 'C.bold must contain bright white escape sequence (97m)');
 assert(C.white.includes('254m') || C.white.includes('97m'), 'C.white must be crisp ANSI white');
 assert(C.guide.includes('240m'), 'C.guide must be distinct container guide');
-assert(C.granateBold.includes('197m'), 'C.granateBold must be high-visibility crimson');
-console.log('✓ Palette ANSI 256 tests passed.');
+assert(C.granateBold.includes('160;50;62') || C.granateBold.includes('140;47;57'), 'C.granateBold must be true burgundy granate');
+console.log('✓ Palette granate burgundy and high-contrast tests passed.');
 
 // 2. Markdown Stream tests
 let rendered = '';

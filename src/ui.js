@@ -12,16 +12,16 @@ const C = {
   italic: '\x1b[3m',
   underline: '\x1b[4m',
 
-  // Granate / Crimson (Vibrant & High Contrast)
-  granate: '\x1b[38;5;168m',
-  granateBold: '\x1b[1;38;5;197m',
-  granateBright: '\x1b[1;38;5;204m',
-  granateDark: '\x1b[38;5;240m',
-  granateBg: '\x1b[48;5;197m\x1b[1;97m',
+  // Granate / Burgundy palette (#8C2F39) - True brand colors
+  granate: '\x1b[38;2;140;47;57m',
+  granateBold: '\x1b[1m\x1b[38;2;160;50;62m',
+  granateBright: '\x1b[38;2;184;74;85m',
+  granateDark: '\x1b[38;2;94;31;38m',
+  granateBg: '\x1b[48;2;140;47;57m\x1b[1;97m',
 
-  // High-Contrast Accents
-  rose: '\x1b[1;38;5;211m',
-  roseBold: '\x1b[1;38;5;211m',
+  // Accents
+  rose: '\x1b[38;2;225;112;128m',
+  roseBold: '\x1b[1m\x1b[38;2;225;112;128m',
   gold: '\x1b[1;38;5;214m',
   green: '\x1b[1;38;5;114m',
   greenBright: '\x1b[1;38;5;84m',
@@ -47,7 +47,7 @@ ${C.granateBold}  ██████╗  ███████╗ ██╗ █�
 `;
 
 const MODE_INFO = {
-  build: { label: 'BUILD', color: C.rose, badge: `${C.rose}[BUILD]${C.reset}`, desc: 'Autónomo: edita, ejecuta y verifica sin pedir permiso.' },
+  build: { label: 'BUILD', color: C.granateBright, badge: `${C.granateBright}[BUILD]${C.reset}`, desc: 'Autónomo: edita, ejecuta y verifica sin pedir permiso.' },
   copilot: { label: 'COPILOT', color: C.gold, badge: `${C.gold}[COPILOT]${C.reset}`, desc: 'Supervisado: cada cambio y comando se muestra y se aprueba.' },
   plan: { label: 'PLAN', color: C.cyan, badge: `${C.cyan}[PLAN]${C.reset}`, desc: 'Solo lectura: analiza y propone un plan sin tocar archivos.' },
 };
