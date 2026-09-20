@@ -14,14 +14,14 @@ try {
 
 function Pause-Console {
     param([int]$ExitCode = 0)
-    Write-Host ""
-    Write-Host "  Presiona Enter para cerrar esta ventana..." -ForegroundColor Gray
     try {
-        if ([Environment]::UserInteractive) {
+        if ([Environment]::UserInteractive -and -not [Console]::IsInputRedirected) {
+            Write-Host ""
+            Write-Host "  Presiona Enter para cerrar esta ventana..." -ForegroundColor Gray
             $null = [Console]::ReadLine()
         }
     } catch {
-        Start-Sleep -Seconds 3
+        Start-Sleep -Seconds 1
     }
     if ($ExitCode -ne 0) {
         Exit $ExitCode
@@ -148,7 +148,14 @@ try {
     Write-Host "   (en cualquier ventana de PowerShell, CMD o Terminal)" -ForegroundColor Gray
     Write-Host ""
 
-    $launch = Read-Host "  ¿Deseas iniciar Deiza Code ahora mismo? [S/n]"
+    $launch = "n"
+    try {
+        if ([Environment]::UserInteractive -and -not [Console]::IsInputRedirected) {
+            $launch = Read-Host "  ¿Deseas iniciar Deiza Code ahora mismo? [S/n]"
+        }
+    } catch {
+        $launch = "n"
+    }
     if ($launch -eq "" -or $launch -match "^[sSyY]") {
         Write-Host ""
         & node $ScriptPath

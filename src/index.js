@@ -22,11 +22,13 @@ const UPDATE_BASE = 'https://deiza.org/downloads';
 function restartSelf(rlInstance) {
   try {
     if (rlInstance) {
-      try { rlInstance.close(); } catch {}
+      try {
+        rlInstance.removeAllListeners('close');
+        rlInstance.close();
+      } catch {}
     }
     try {
       if (process.stdin.setRawMode) process.stdin.setRawMode(false);
-      process.stdin.pause();
     } catch {}
     try {
       if (process.stdout.isTTY) process.stdout.write('\x1b[?2004l');
@@ -93,11 +95,18 @@ function runAutoUpdate() {
       file.on('finish', () => {
         file.close(() => {
           try {
-            fs.renameSync(tmp, targetScript);
+            fs.copyFileSync(tmp, targetScript);
+            try { fs.unlinkSync(tmp); } catch {}
             try { fs.chmodSync(targetScript, 0o755); } catch {}
             resolve('Actualización aplicada directamente.');
-          } catch (err) {
-            fallbackInstaller(resolve, reject);
+          } catch {
+            try {
+              fs.renameSync(tmp, targetScript);
+              try { fs.chmodSync(targetScript, 0o755); } catch {}
+              resolve('Actualización aplicada directamente.');
+            } catch (err2) {
+              fallbackInstaller(resolve, reject);
+            }
           }
         });
       });
@@ -227,7 +236,7 @@ async function startRepl(initialConfig) {
           console.log(Status.error(`Error en auto-actualización: ${err.message}`));
         }
       } else {
-        console.log(`  ${C.gray}Continuando con la versión actual (puedes actualizar después con /update).${C.reset}\n`);
+        console.log(`  ${C.gray}Continuando con la versión actual (puedes actualizar después con /update o /upgrade).${C.reset}\n`);
       }
     }
   } catch {}
@@ -363,7 +372,7 @@ async function startRepl(initialConfig) {
   // Non-blocking background version check
   checkLatestVersion().then((remote) => {
     if (remote && remote.version && isNewerVersion(remote.version, VERSION) && !busy) {
-      console.log(`\n  ${C.gold}Nueva versión de Deiza Code disponible: ${C.bold}v${remote.version}${C.reset} ${C.gray}(actual: v${VERSION})${C.reset}. Ejecuta ${C.bold}/update${C.reset} para actualizar.\n`);
+      console.log(`\n  ${C.gold}Nueva versión de Deiza Code disponible: ${C.bold}v${remote.version}${C.reset} ${C.gray}(actual: v${VERSION})${C.reset}. Ejecuta ${C.bold}/update${C.reset} o ${C.bold}/upgrade${C.reset} para actualizar.\n`);
       rl.prompt(true);
     }
   }).catch(() => {});
@@ -687,7 +696,7 @@ async function startRepl(initialConfig) {
         return;
       }
 
-      if (cmd === '/update') {
+      if (cmd === '/update' || cmd === '/upgrade') {
         console.log(`\n  ${C.gray}Comprobando actualizaciones de Deiza Code...${C.reset}`);
         const remoteVer = await checkLatestVersion();
         if (!remoteVer) {
@@ -953,8 +962,8 @@ async function startRepl(initialConfig) {
       // Completed bracketed paste block: flush immediately
       setImmediate(flushPasteBuffer);
     } else {
-      // Collect paste burst (40ms debounce)
-      pasteTimer = setTimeout(flushPasteBuffer, 40);
+      // Collect paste burst (150ms debounce)
+      pasteTimer = setTimeout(flushPasteBuffer, 150);
     }
   });
 

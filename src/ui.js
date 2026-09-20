@@ -368,6 +368,7 @@ const COMMANDS_REGISTRY = [
   { cmd: '/login', args: '', desc: 'Iniciar sesión con tu cuenta de Deiza (navegador o API Key)', cat: 'Cuenta' },
   { cmd: '/logout', args: '', desc: 'Cerrar sesión en esta máquina', cat: 'Cuenta' },
   { cmd: '/update', args: '', desc: 'Comprobar y actualizar Deiza Code a la última versión', cat: 'Sistema' },
+  { cmd: '/upgrade', args: '', desc: 'Alias de /update (comprobar y actualizar a la última versión)', cat: 'Sistema' },
   { cmd: '/model', args: '[id]', desc: 'Motor activo (deiza-omniscient) o modelo del endpoint custom', cat: 'Configuración' },
   { cmd: '/endpoint', args: '[url|deiza]', desc: 'Usar otro motor OpenAI-compatible (Ollama, vLLM...) o volver a Deiza', cat: 'Configuración' },
   { cmd: '/config', args: '', desc: 'Ver o modificar la configuración local', cat: 'Configuración' },
