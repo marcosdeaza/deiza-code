@@ -6,7 +6,7 @@
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
-const { exec, spawn } = require('child_process');
+const { exec, spawn, spawnSync } = require('child_process');
 const readline = require('readline');
 const { C, BANNER, Status, box, COMMANDS_REGISTRY, MODE_INFO, modeBadge, renderModes, renderCommandPalette, renderWhoami, renderSessionList, renderSessionInfo, renderCompactionCard, selectSessionInteractive } = require('./ui');
 const { loadConfig, saveConfig, DEFAULT_MODEL, VERSION, MODES, IS_CLOSED, normalizeMode, normalizeUrl, isDeizaHost } = require('./config');
@@ -19,19 +19,28 @@ const { detectImageInText, getClipboardImage } = require('./clipboard');
 
 const UPDATE_BASE = 'https://deiza.org/downloads';
 
-function restartSelf() {
+function restartSelf(rlInstance) {
   try {
-    const child = spawn(process.argv[0], process.argv.slice(1), {
+    if (rlInstance) {
+      try { rlInstance.close(); } catch {}
+    }
+    try {
+      if (process.stdin.setRawMode) process.stdin.setRawMode(false);
+      process.stdin.pause();
+    } catch {}
+    try {
+      if (process.stdout.isTTY) process.stdout.write('\x1b[?2004l');
+    } catch {}
+
+    const res = spawnSync(process.argv[0], process.argv.slice(1), {
       stdio: 'inherit',
       env: process.env,
-      detached: false,
+      windowsHide: false,
     });
-    child.on('close', (code) => {
-      process.exit(code || 0);
-    });
-    setTimeout(() => process.exit(0), 1200);
-  } catch {
-    process.exit(0);
+    process.exit(res.status ?? 0);
+  } catch (err) {
+    console.error(`Error al reiniciar Deiza Code: ${err.message}`);
+    process.exit(1);
   }
 }
 
@@ -212,7 +221,7 @@ async function startRepl(initialConfig) {
           await runAutoUpdate();
           console.log(`  ${C.green}✓ Deiza Code actualizado con éxito.${C.reset}`);
           console.log(`  ${C.cyan}↻ Reiniciando Deiza Code en la nueva versión...${C.reset}\n`);
-          restartSelf();
+          restartSelf(rl);
           return;
         } catch (err) {
           console.log(Status.error(`Error en auto-actualización: ${err.message}`));
@@ -361,8 +370,7 @@ async function startRepl(initialConfig) {
 
   rl.prompt();
 
-  rl.on('line', async (line) => {
-    const input = (line || '').replace(/\r/g, '').trim();
+  const handleSubmittedInput = async (input) => {
     if (!input) {
       if (!busy) rl.prompt();
       return;
@@ -384,7 +392,11 @@ async function startRepl(initialConfig) {
         return;
       }
       inputQueue.push(input);
-      console.log(`  ${C.rose}› [en cola #${inputQueue.length}]:${C.reset} "${input.length > 55 ? input.slice(0, 52) + '...' : input}" ${C.gray}(se ejecutará al terminar)${C.reset}`);
+      const isMulti = input.includes('\n');
+      const preview = isMulti
+        ? `${input.split('\n')[0].slice(0, 45)}... (${input.split('\n').length} líneas)`
+        : (input.length > 55 ? input.slice(0, 52) + '...' : input);
+      console.log(`  ${C.rose}› [en cola #${inputQueue.length}]:${C.reset} "${preview}" ${C.gray}(se ejecutará al terminar)${C.reset}`);
       return;
     }
 
@@ -701,7 +713,7 @@ async function startRepl(initialConfig) {
           await runAutoUpdate();
           console.log(`  ${C.green}✓ Deiza Code actualizado con éxito.${C.reset}`);
           console.log(`  ${C.cyan}↻ Reiniciando Deiza Code en la nueva versión...${C.reset}\n`);
-          restartSelf();
+          restartSelf(rl);
           return;
         } catch (err) {
           console.log(Status.error(`Error durante la actualización: ${err.message}`));
@@ -839,6 +851,7 @@ async function startRepl(initialConfig) {
       }
 
       if (cmd === '/exit' || cmd === '/quit') {
+        cleanupTerminal();
         rl.close();
         return;
       }
@@ -865,6 +878,84 @@ async function startRepl(initialConfig) {
     await runTurn(effectiveInput, runImages);
     rl.setPrompt(getPrompt());
     rl.prompt();
+  };
+
+  // ── Bracketed Paste & Multiline Input Accumulator ──
+  // When a user pastes text with newlines (even 80+ lines), all lines arrive in a rapid burst
+  // or wrapped inside ANSI bracketed paste sequences (\x1b[200~ ... \x1b[201~).
+  // We accumulate all lines and submit them as ONE single multiline instruction!
+  let pasteBuffer = [];
+  let pasteTimer = null;
+  let inBracketedPaste = false;
+
+  const flushPasteBuffer = async () => {
+    if (pasteTimer) {
+      clearTimeout(pasteTimer);
+      pasteTimer = null;
+    }
+    if (pasteBuffer.length === 0) return;
+
+    const lines = pasteBuffer;
+    pasteBuffer = [];
+    inBracketedPaste = false;
+    const combined = lines.join('\n').trim();
+
+    if (!combined) {
+      if (!busy) rl.prompt();
+      return;
+    }
+
+    if (lines.length > 1) {
+      console.log(`  ${C.gray}› [multilínea]: Recibidas ${C.white}${lines.length}${C.gray} líneas como una única instrucción.${C.reset}`);
+    }
+
+    await handleSubmittedInput(combined);
+  };
+
+  function cleanupTerminal() {
+    if (process.stdout.isTTY) {
+      try { process.stdout.write('\x1b[?2004l'); } catch {}
+    }
+  }
+
+  if (process.stdout.isTTY) {
+    try { process.stdout.write('\x1b[?2004h'); } catch {}
+  }
+
+  process.on('exit', cleanupTerminal);
+
+  rl.on('line', (line) => {
+    const raw = (line || '').replace(/\r/g, '');
+
+    // Check for ANSI bracketed paste delimiters
+    if (raw.includes('\x1b[200~')) inBracketedPaste = true;
+    const cleanLine = raw.replace(/\x1b\[20[01]~/g, '');
+    const hadEndMarker = raw.includes('\x1b[201~');
+    if (hadEndMarker) inBracketedPaste = false;
+
+    // Fast-path abort command if user typed /abort while agent is working
+    if (busy && !inBracketedPaste && pasteBuffer.length === 0) {
+      const trimmed = cleanLine.trim();
+      if (trimmed === '/abort' || trimmed === '/cancel' || trimmed === 'q') {
+        if (abortCtl) {
+          console.log(`\n  ${C.gold}■ Interrumpiendo tarea en curso...${C.reset}`);
+          abortCtl.abort();
+        }
+        return;
+      }
+    }
+
+    pasteBuffer.push(cleanLine);
+
+    if (pasteTimer) clearTimeout(pasteTimer);
+
+    if (hadEndMarker && !inBracketedPaste) {
+      // Completed bracketed paste block: flush immediately
+      setImmediate(flushPasteBuffer);
+    } else {
+      // Collect paste burst (40ms debounce)
+      pasteTimer = setTimeout(flushPasteBuffer, 40);
+    }
   });
 
   function closedOnlyNotice() {

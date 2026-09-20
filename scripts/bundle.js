@@ -46,7 +46,7 @@ const http = require('http');
 const https = require('https');
 const crypto = require('crypto');
 const readline = require('readline');
-const { exec, spawn, execSync, execFileSync } = require('child_process');
+const { exec, spawn, spawnSync, execSync, execFileSync } = require('child_process');
 `;
 
 const uiCode = cleanCode(read('src/ui.js'));
