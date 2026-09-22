@@ -156,10 +156,11 @@ async function startRepl(initialConfig) {
   console.clear();
   console.log(BANNER);
 
-  // Model list only matters for the native engine; a custom endpoint keeps whatever the user set.
+  // Model validation: ensure native models stay on whatever the user set
   if (!cfg.isCustomEndpoint) {
-    const models = await fetchModels(cfg.apiKey, cfg.accountBase);
-    if (models.length > 0 && !models.some(m => m.id === cfg.model)) cfg.model = models[0].id || DEFAULT_MODEL;
+    if (!cfg.model || !NATIVE_MODELS.includes(cfg.model)) {
+      cfg.model = DEFAULT_MODEL;
+    }
   } else if (!cfg.model || cfg.model === DEFAULT_MODEL) {
     cfg.model = cfg.endpointModel || 'default';
   }
@@ -206,9 +207,11 @@ async function startRepl(initialConfig) {
         '/model liquid',
         '/model solid',
         '/model gas',
+        '/model vainilla',
         '/liquid',
         '/solid',
         '/gas',
+        '/vainilla',
       ];
       const hits = allCmds.filter(c => c.startsWith(line));
       return [hits.length ? hits : allCmds, line];
@@ -343,7 +346,7 @@ async function startRepl(initialConfig) {
       } else if (msg === 'PLAN_REQUIRED') {
         console.log(Status.error('Deiza Code requiere un plan de pago activo (Friend o Signet): https://deiza.org/plans'));
       } else if (msg === 'USAGE_LIMIT_EXCEEDED') {
-        console.log(Status.error('Has alcanzado el límite de uso de tu plan. Consulta /usage para ver cuándo se reinicia.'));
+        console.log(Status.error('Has alcanzado el límite de uso de tu cuota. Cambia a Deiza Vainilla (/vainilla) para seguir sin límites o consulta /usage.'));
       } else {
         console.log(Status.error(msg));
       }
@@ -766,17 +769,25 @@ async function startRepl(initialConfig) {
         return;
       }
 
-      if (cmd === '/model' || cmd === '/models' || cmd === '/liquid' || cmd === '/solid' || cmd === '/gas') {
+      if (cmd === '/model' || cmd === '/models' || cmd === '/liquid' || cmd === '/solid' || cmd === '/gas' || cmd === '/vainilla') {
         let targetArg = parts[1]?.trim();
         if (cmd === '/liquid') targetArg = 'liquid';
         else if (cmd === '/solid') targetArg = 'solid';
         else if (cmd === '/gas') targetArg = 'gas';
+        else if (cmd === '/vainilla') targetArg = 'vainilla';
 
         if (!cfg.isCustomEndpoint) {
           if (!targetArg || targetArg === 'list' || targetArg === 'ls') {
             console.log(renderModelSelector(cfg.model));
-            rl.prompt();
-            return;
+            const currentInfo = MODEL_INFO[cfg.model] || MODEL_INFO[DEFAULT_MODEL];
+            const answer = await askLine(`  ${C.rose}Elige modelo [1-4] o nombre (Enter para mantener ${currentInfo.name}): ${C.reset}`, { rl });
+            const chosen = String(answer || '').trim();
+            if (!chosen) {
+              console.log(`  ${C.gray}Se mantiene ${currentInfo.name}.${C.reset}\n`);
+              rl.prompt();
+              return;
+            }
+            targetArg = chosen;
           }
 
           const resolved = normalizeModel(targetArg);
@@ -788,8 +799,7 @@ async function startRepl(initialConfig) {
             console.log(`    ${C.gray}${info.desc}${C.reset}\n`);
             rl.setPrompt(getPrompt());
           } else {
-            console.log(`\n  ${C.granateBright}✖ Modelo desconocido:${C.reset} "${targetArg}"`);
-            console.log(renderModelSelector(cfg.model));
+            console.log(`\n  ${C.granateBright}✖ Modelo desconocido:${C.reset} "${targetArg}"\n`);
           }
         } else if (targetArg) {
           cfg.model = targetArg;

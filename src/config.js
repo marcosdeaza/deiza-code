@@ -21,17 +21,17 @@ const DEIZA_DIR = path.join(os.homedir(), '.deiza');
 const CONFIG_FILE = path.join(DEIZA_DIR, 'config.json');
 const SESSIONS_DIR = path.join(DEIZA_DIR, 'sessions');
 
-const VERSION = '2.0.0';
+const VERSION = '2.1.0';
 const DEFAULT_DEIZA_API = 'https://deiza.org';
 const DEFAULT_MODEL = 'deiza-liquid';
 
-const NATIVE_MODELS = ['deiza-liquid', 'deiza-solid', 'deiza-gas'];
+const NATIVE_MODELS = ['deiza-liquid', 'deiza-solid', 'deiza-gas', 'deiza-vainilla'];
 
 const MODEL_ALIASES = {
   'liquid': 'deiza-liquid',
   'liquid-5': 'deiza-liquid',
-  'liquid-5.1': 'deiza-liquid',
   'liquid5': 'deiza-liquid',
+  'liquid-5.1': 'deiza-liquid',
   '5': 'deiza-liquid',
   '1': 'deiza-liquid',
 
@@ -47,6 +47,11 @@ const MODEL_ALIASES = {
   '4.1': 'deiza-gas',
   '3': 'deiza-gas',
 
+  'vainilla': 'deiza-vainilla',
+  'vanilla': 'deiza-vainilla',
+  'gemma': 'deiza-vainilla',
+  '4': 'deiza-vainilla',
+
   'omniscient': 'deiza-liquid',
   'deiza-omniscient': 'deiza-liquid',
   'default': 'deiza-liquid',
@@ -56,10 +61,10 @@ const MODEL_INFO = {
   'deiza-liquid': {
     id: 'deiza-liquid',
     shortName: 'liquid',
-    name: 'Deiza Liquid 5.1',
-    badge: 'Liquid 5.1 · 1M tokens',
-    tag: 'LIQUID',
-    desc: 'Motor principal equilibrado. Ventana de 1M tokens, alta velocidad y diffs limpios.',
+    name: 'Deiza Liquid 5',
+    badge: 'Liquid 5 · 1M tokens',
+    tag: 'LIQUID 5',
+    desc: 'Motor principal autónomo. Ventana de 1M tokens, alta velocidad y diffs limpios.',
     tier: 'Equilibrado',
     speed: 'Rápido',
     default: true,
@@ -69,7 +74,7 @@ const MODEL_INFO = {
     shortName: 'solid',
     name: 'Deiza Solid 4.5',
     badge: 'Solid 4.5 · Razonamiento profundo',
-    tag: 'SOLID',
+    tag: 'SOLID 4.5',
     desc: 'Máximo razonamiento y lógica profunda. Ideal para arquitectura, seguridad y depuración.',
     tier: 'Razonamiento',
     speed: 'Analítico',
@@ -80,10 +85,21 @@ const MODEL_INFO = {
     shortName: 'gas',
     name: 'Deiza Gas 4.1',
     badge: 'Gas 4.1 · Ultra-rápido',
-    tag: 'GAS',
+    tag: 'GAS 4.1',
     desc: 'Velocidad ultra-rápida y soporte multimodal nativo. Para iteraciones y scripts ágiles.',
     tier: 'Velocidad',
     speed: 'Ultra-rápido',
+    default: false,
+  },
+  'deiza-vainilla': {
+    id: 'deiza-vainilla',
+    shortName: 'vainilla',
+    name: 'Deiza Vainilla',
+    badge: 'Vainilla · Ligero & Ilimitado',
+    tag: 'VAINILLA',
+    desc: 'Modelo suave, ultra-rápido y conversacional. Siempre disponible y sin consumo de cuota.',
+    tier: 'Ilimitado',
+    speed: 'Instantáneo',
     default: false,
   },
 };

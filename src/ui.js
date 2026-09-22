@@ -58,9 +58,10 @@ function modeBadge(mode) {
 }
 
 const MODEL_BADGES = {
-  'deiza-liquid': '\x1b[1;38;5;81m[LIQUID 5.1]\x1b[0m',
+  'deiza-liquid': '\x1b[1;38;5;81m[LIQUID 5]\x1b[0m',
   'deiza-solid': '\x1b[1m\x1b[38;2;184;74;85m[SOLID 4.5]\x1b[0m',
   'deiza-gas': '\x1b[1;38;5;114m[GAS 4.1]\x1b[0m',
+  'deiza-vainilla': '\x1b[1;38;5;222m[VAINILLA]\x1b[0m',
 };
 
 function modelBadge(modelId) {
@@ -71,9 +72,10 @@ function modelBadge(modelId) {
 function renderModelSelector(currentModel = 'deiza-liquid') {
   let out = `\n  ${C.granateBold}Modelos Nativos de Deiza (Arquitectura Multicapa Mantle):${C.reset}\n`;
   const list = [
-    { num: '1', key: 'deiza-liquid', short: 'liquid', info: MODEL_INFO['deiza-liquid'], color: C.cyan },
-    { num: '2', key: 'deiza-solid',  short: 'solid',  info: MODEL_INFO['deiza-solid'],  color: C.granateBright },
-    { num: '3', key: 'deiza-gas',    short: 'gas',    info: MODEL_INFO['deiza-gas'],    color: C.green },
+    { num: '1', key: 'deiza-liquid',   short: 'liquid',   info: MODEL_INFO['deiza-liquid'],   color: C.cyan },
+    { num: '2', key: 'deiza-solid',    short: 'solid',    info: MODEL_INFO['deiza-solid'],    color: C.granateBright },
+    { num: '3', key: 'deiza-gas',      short: 'gas',      info: MODEL_INFO['deiza-gas'],      color: C.green },
+    { num: '4', key: 'deiza-vainilla', short: 'vainilla', info: MODEL_INFO['deiza-vainilla'], color: '\x1b[38;5;222m' },
   ];
   for (const item of list) {
     const isAct = item.key === currentModel || item.short === currentModel;
@@ -82,7 +84,7 @@ function renderModelSelector(currentModel = 'deiza-liquid') {
     out += `  ${mark} ${C.bold}[${item.num}]${C.reset} ${item.color}${item.info.name.padEnd(18)}${C.reset} ${C.white}/model ${item.short}${C.reset}${actBadge}\n`;
     out += `      ${C.gray}${item.info.desc}${C.reset}\n`;
   }
-  out += `\n  ${C.gray}Cambia escribiendo ${C.white}/model liquid${C.gray}, ${C.white}/model solid${C.gray} o ${C.white}/model gas${C.gray} (o ${C.white}/model 1${C.gray}, ${C.white}2${C.gray}, ${C.white}3${C.gray}).${C.reset}\n`;
+  out += `\n  ${C.gray}Atajos directos: ${C.white}/liquid${C.gray} · ${C.white}/solid${C.gray} · ${C.white}/gas${C.gray} · ${C.white}/vainilla${C.reset}\n`;
   return out;
 }
 
@@ -398,10 +400,11 @@ const COMMANDS_REGISTRY = [
   { cmd: '/logout', args: '', desc: 'Cerrar sesión en esta máquina', cat: 'Cuenta' },
   { cmd: '/update', args: '', desc: 'Comprobar y actualizar Deiza Code a la última versión', cat: 'Sistema' },
   { cmd: '/upgrade', args: '', desc: 'Alias de /update (comprobar y actualizar a la última versión)', cat: 'Sistema' },
-  { cmd: '/model', args: '[liquid|solid|gas]', desc: 'Cambiar de modelo (Liquid 5.1, Solid 4.5, Gas 4.1)', cat: 'Configuración' },
-  { cmd: '/liquid', args: '', desc: 'Activar modelo Deiza Liquid 5.1 (Equilibrado · 1M tokens)', cat: 'Modelos' },
+  { cmd: '/model', args: '[1-4|nombre]', desc: 'Cambiar de modelo (Liquid 5, Solid 4.5, Gas 4.1, Vainilla)', cat: 'Configuración' },
+  { cmd: '/liquid', args: '', desc: 'Activar modelo Deiza Liquid 5 (Equilibrado · 1M tokens)', cat: 'Modelos' },
   { cmd: '/solid', args: '', desc: 'Activar modelo Deiza Solid 4.5 (Razonamiento profundo y arquitectura)', cat: 'Modelos' },
   { cmd: '/gas', args: '', desc: 'Activar modelo Deiza Gas 4.1 (Velocidad ultra-rápida y visión)', cat: 'Modelos' },
+  { cmd: '/vainilla', args: '', desc: 'Activar modelo Deiza Vainilla (Ultra-rápido, conversacional y 100% ilimitado)', cat: 'Modelos' },
   { cmd: '/endpoint', args: '[url|deiza]', desc: 'Usar otro motor OpenAI-compatible (Ollama, vLLM...) o volver a Deiza', cat: 'Configuración' },
   { cmd: '/config', args: '', desc: 'Ver o modificar la configuración local', cat: 'Configuración' },
   { cmd: '/init', args: '', desc: 'Crear directivas .deizarules en la raíz del repo', cat: 'Proyecto' },

@@ -147,7 +147,6 @@ async function fetchUsage(apiKey, accountBase = DEFAULT_DEIZA_API) {
   if (!apiKey) return null;
   const res = await jsonRequest('GET', `${accountBase}/api/code/usage`, { apiKey });
   if (res.status === 401 || res.status === 0 || !res.data) return null;
-  if (res.status === 403 && res.data.plan === 'free') return { ...res.data, plan: 'free', requires_upgrade: true };
   if (!res.ok) return null;
   if (!res.data.plan) return null;
   return res.data;
@@ -155,7 +154,10 @@ async function fetchUsage(apiKey, accountBase = DEFAULT_DEIZA_API) {
 
 async function fetchModels(apiKey, accountBase = DEFAULT_DEIZA_API) {
   const fallback = [
-    { id: 'deiza-omniscient', name: 'Deiza Omniscient', description: 'Motor autónomo Deiza Liquid 5.1 en infraestructura dedicada de Deiza' },
+    { id: 'deiza-liquid', name: 'Deiza Liquid 5', description: 'Motor principal autónomo. Ventana de 1M tokens.' },
+    { id: 'deiza-solid', name: 'Deiza Solid 4.5', description: 'Razonamiento profundo y arquitectura.' },
+    { id: 'deiza-gas', name: 'Deiza Gas 4.1', description: 'Velocidad ultra-rápida y soporte multimodal.' },
+    { id: 'deiza-vainilla', name: 'Deiza Vainilla', description: 'Modelo suave, conversacional y 100% ilimitado.' },
   ];
   const res = await jsonRequest('GET', `${accountBase}/api/code/models`, { apiKey, timeout: 5000 });
   if (res.ok && res.data && Array.isArray(res.data.models) && res.data.models.length) return res.data.models;
@@ -172,16 +174,9 @@ async function validateApiKey(apiKey, accountBase = DEFAULT_DEIZA_API) {
   if (!usage) {
     return { valid: false, error: 'API Key inválida, revocada o no autorizada en deiza.org.' };
   }
-  if (usage.plan === 'free') {
-    return {
-      valid: false,
-      plan: 'free',
-      error: 'Deiza Code requiere un plan de pago activo (Friend o Signet). Actualiza en https://deiza.org/plans',
-    };
-  }
   return {
     valid: true,
-    plan: usage.plan,
+    plan: usage.plan || 'free',
     email: usage.email || '',
     name: usage.name || '',
     apiKey: key,
@@ -363,17 +358,10 @@ async function ensureAuthenticated(cfg, { rl, force = false } = {}) {
   const accountBase = isDeizaHost(cfg.accountBase) ? cfg.accountBase : DEFAULT_DEIZA_API;
   if (!force && cfg.apiKey) {
     const usage = await fetchUsage(cfg.apiKey, accountBase);
-    if (usage && usage.plan && usage.plan !== 'free') {
+    if (usage && usage.plan) {
       const updated = { ...cfg, plan: usage.plan, email: usage.email || cfg.email, name: usage.name || cfg.name, usage };
       if (updated.plan !== cfg.plan || updated.email !== cfg.email || updated.name !== cfg.name) saveConfig(updated);
       return updated;
-    }
-    if (usage && usage.plan === 'free') {
-      console.log(`\n  ${C.granateBright}✖ Acceso restringido:${C.reset} Deiza Code requiere un plan de pago activo (${C.bold}Friend${C.reset} o ${C.bold}Signet${C.reset}).`);
-      console.log(`  Actualiza tu suscripción en: ${C.white}${accountBase}/plans${C.reset}\n`);
-      const err = new Error('PLAN_REQUIRED');
-      err.exitCode = 1;
-      throw err;
     }
     // Server unreachable but a key exists: let the user in and validate lazily.
     const ping = await jsonRequest('GET', `${accountBase}/api/health`, { timeout: 4000 });

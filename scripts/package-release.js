@@ -16,10 +16,11 @@ fs.copyFileSync(path.join(DIST, 'deiza-code.js'), path.join(DOWNLOADS, 'deiza-co
 fs.chmodSync(path.join(DOWNLOADS, 'deiza-code.js'), 0o755);
 
 // 3. Write version.json
+const { VERSION } = require('../src/config');
 const versionInfo = {
-  version: "1.7.4",
+  version: VERSION,
   release_date: new Date().toISOString().split('T')[0],
-  notes: "v1.7.4: Bucle autónomo continuo completo para Windows y todas las plataformas (hasta 120 rondas sin paradas prematuras), soporte para comando /upgrade como alias de /update, solución al reinicio automático tras actualización y pegado fiable de bloques de texto multilínea sin fragmentación en cola.",
+  notes: `v${VERSION}: Soporte oficial para Deiza Liquid 5 (1M tokens), Deiza Solid 4.5, Deiza Gas 4.1 y el nuevo modelo Deiza Vainilla (conversacional y 100% ilimitado). Selector /model interactivo mejorado, atajos directos y acceso general abierto para todas las cuentas.`,
   platforms: {
     darwin: "https://deiza.org/downloads/deiza-code.js",
     linux: "https://deiza.org/downloads/deiza-code.js",

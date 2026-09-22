@@ -39,10 +39,12 @@ Subcomandos:
   deiza tokens
   deiza compact
 
-Deiza Code siempre necesita una cuenta de Deiza con plan de pago (Friend o Signet).${IS_CLOSED ? `
-Motor: Deiza Omniscient (Deiza Liquid 5.1), con la cuota de uso de tu plan.` : ''}
+Deiza Code funciona con tu cuenta de Deiza (planes Free, Friend o Signet).${IS_CLOSED ? `
+Modelos: Liquid 5 (Equilibrado · 1M tokens), Solid 4.5, Gas 4.1 y Vainilla (ilimitado).` : ''}
 Ejemplos:
   deiza
+  deiza --solid
+  deiza --vainilla
   deiza --copilot
   deiza -p "añade tests a src/utils.js"${IS_CLOSED ? '' : `
   deiza --endpoint http://localhost:11434 --model llama3`}
@@ -56,7 +58,7 @@ function printTokens(ses, cfg) {
   const remaining = Math.max(0, maxTokens - activeContext);
   const sessionTotal = ses?.tokens?.total || 0;
   const currentModelId = cfg?.model || DEFAULT_MODEL;
-  const currentModelInfo = MODEL_INFO[currentModelId] || { name: 'Deiza Liquid 5.1', badge: '1M tokens' };
+  const currentModelInfo = MODEL_INFO[currentModelId] || { name: 'Deiza Liquid 5', badge: '1M tokens' };
   let content = '';
   content += `${C.white}Motor de Inferencia:${C.reset}     ${C.granateBright}${currentModelInfo.name}${C.reset} ${C.gray}(${currentModelInfo.badge})${C.reset}\n`;
   content += `${C.white}Ventana de Contexto:${C.reset}     ${C.bold}1,000,000 (1M)${C.reset} tokens nativos\n`;
@@ -214,6 +216,9 @@ async function main() {
     } else if (a === '--gas') {
       cfg.model = 'deiza-gas';
       consumed.add(i);
+    } else if (a === '--vainilla' || a === '--vanilla') {
+      cfg.model = 'deiza-vainilla';
+      consumed.add(i);
     } else if (a === '--plan' || a === '--copilot' || a === '--build') {
       cfg.mode = a.slice(2);
       consumed.add(i);
@@ -222,7 +227,7 @@ async function main() {
     }
   }
   if (!cfg.mode) cfg.mode = cfg.defaultMode || 'build';
-  if (cfg.isCustomEndpoint) saveConfig(cfg);
+  if (NATIVE_MODELS.includes(cfg.model) || cfg.isCustomEndpoint) saveConfig(cfg);
 
   // Bare text after the flags is a direct prompt
   if (!inlinePrompt) {

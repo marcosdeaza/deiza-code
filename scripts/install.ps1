@@ -14,14 +14,14 @@ try {
 
 function Pause-Console {
     param([int]$ExitCode = 0)
-    Write-Host ""
-    Write-Host "  Presiona Enter para cerrar esta ventana..." -ForegroundColor Gray
     try {
-        if ([Environment]::UserInteractive) {
+        if ([Environment]::UserInteractive -and -not [Console]::IsInputRedirected) {
+            Write-Host ""
+            Write-Host "  Presiona Enter para cerrar esta ventana..." -ForegroundColor Gray
             $null = [Console]::ReadLine()
         }
     } catch {
-        Start-Sleep -Seconds 3
+        Start-Sleep -Seconds 1
     }
     if ($ExitCode -ne 0) {
         Exit $ExitCode
@@ -127,17 +127,42 @@ try {
     Set-Content -Path $Ps1Path -Value $Ps1Content -Force
     Write-Host " [OK]" -ForegroundColor Green
 
-    # 5. Añadir al PATH de Usuario
+    # 5. Añadir al PATH de Usuario (con máxima prioridad al principio)
     $UserPath = [Environment]::GetEnvironmentVariable("Path", "User")
     if ([string]::IsNullOrWhiteSpace($UserPath)) {
         [Environment]::SetEnvironmentVariable("Path", $BinDir, "User")
-        $env:Path += ";$BinDir"
-    } elseif ($UserPath -notlike "*$BinDir*") {
-        [Environment]::SetEnvironmentVariable("Path", "$UserPath;$BinDir", "User")
-        $env:Path += ";$BinDir"
+        $env:Path = "$BinDir;$env:Path"
+    } else {
+        $paths = $UserPath -split ';' | Where-Object { $_ -ne "" -and $_ -ne $BinDir }
+        $newUserPath = ($BinDir, $paths) -join ';'
+        [Environment]::SetEnvironmentVariable("Path", $newUserPath, "User")
+        $env:Path = "$BinDir;$env:Path"
     }
 
-    # 6. Finalización
+    # 6. Limpiar configuraciones obsoletas o corruptas en ~/.deiza/config.json
+    $ConfigFile = Join-Path $env:USERPROFILE ".deiza\config.json"
+    if (Test-Path $ConfigFile) {
+        try {
+            $rawJson = Get-Content $ConfigFile -Raw
+            $json = ConvertFrom-Json $rawJson
+            $changed = $false
+            if ($json.endpoint -and ($json.endpoint -like "*bedrock-mantle*" -or $json.endpoint -like "*amazonaws.com*")) {
+                $json.PSObject.Properties.Remove('endpoint')
+                $json.PSObject.Properties.Remove('endpointModel')
+                $changed = $true
+            }
+            if ($json.model -eq "deiza-omniscient" -or -not $json.model) {
+                $json.model = "deiza-liquid"
+                $changed = $true
+            }
+            if ($changed) {
+                $json | ConvertTo-Json -Depth 5 | Set-Content $ConfigFile -Force
+                Write-Host "  ✓ Configuración local saneada y actualizada a Deiza Liquid." -ForegroundColor Green
+            }
+        } catch {}
+    }
+
+    # 7. Finalización
     Write-Host ""
     Write-Host "  ================================================================" -ForegroundColor Green
     Write-Host "     ✓ ¡Instalación de Deiza Code completada con éxito!            " -ForegroundColor Green
@@ -148,7 +173,14 @@ try {
     Write-Host "   (en cualquier ventana de PowerShell, CMD o Terminal)" -ForegroundColor Gray
     Write-Host ""
 
-    $launch = Read-Host "  ¿Deseas iniciar Deiza Code ahora mismo? [S/n]"
+    $launch = "n"
+    try {
+        if ([Environment]::UserInteractive -and -not [Console]::IsInputRedirected) {
+            $launch = Read-Host "  ¿Deseas iniciar Deiza Code ahora mismo? [S/n]"
+        }
+    } catch {
+        $launch = "n"
+    }
     if ($launch -eq "" -or $launch -match "^[sSyY]") {
         Write-Host ""
         & node $ScriptPath
