@@ -6,9 +6,9 @@
 
 const readline = require('readline');
 const { C, Status, renderSessionList, renderSessionInfo, renderCompactionCard, box } = require('../src/ui');
-const { loadConfig, saveConfig, VERSION, DEFAULT_MODEL, MODES, IS_CLOSED, normalizeUrl, isDeizaHost } = require('../src/config');
+const { loadConfig, saveConfig, VERSION, DEFAULT_MODEL, MODES, IS_CLOSED, normalizeUrl, isDeizaHost, MODEL_INFO, NATIVE_MODELS } = require('../src/config');
 const { ensureAuthenticated, askLine } = require('../src/auth');
-const { startRepl } = require('../src/index');
+const { startRepl, checkLatestVersion, isNewerVersion, runAutoUpdate } = require('../src/index');
 const { runAgentTurn, compactContext } = require('../src/agent');
 const { listSessions, listSessionsWithCloud, createSession, loadSession, loadSessionAsync, deleteSession, getLatestSession, getActiveContextTokens, saveSession, configureCloudSync } = require('../src/session');
 
@@ -49,14 +49,16 @@ Ejemplos:
 `);
 }
 
-function printTokens(ses) {
+function printTokens(ses, cfg) {
   const activeContext = ses?.messages ? getActiveContextTokens(ses.messages) : (ses?.contextTokens || 0);
   const maxTokens = 1000000;
   const pct = ((activeContext / maxTokens) * 100).toFixed(2);
   const remaining = Math.max(0, maxTokens - activeContext);
   const sessionTotal = ses?.tokens?.total || 0;
+  const currentModelId = cfg?.model || DEFAULT_MODEL;
+  const currentModelInfo = MODEL_INFO[currentModelId] || { name: 'Deiza Liquid 5.1', badge: '1M tokens' };
   let content = '';
-  content += `${C.white}Motor de Inferencia:${C.reset}     ${C.granateBright}deiza-omniscient${C.reset} ${C.gray}(Liquid 5.1 / Kimi K2.5 · AWS Dedicated)${C.reset}\n`;
+  content += `${C.white}Motor de Inferencia:${C.reset}     ${C.granateBright}${currentModelInfo.name}${C.reset} ${C.gray}(${currentModelInfo.badge})${C.reset}\n`;
   content += `${C.white}Ventana de Contexto:${C.reset}     ${C.bold}1,000,000 (1M)${C.reset} tokens nativos\n`;
   content += `${C.white}Contexto Activo en Memoria:${C.reset} ${C.bold}${C.green}${activeContext.toLocaleString()}${C.reset} / 1,000,000 tokens (${pct}% ocupado)\n`;
   content += `${C.white}Capacidad Disponible:${C.reset}    ${C.bold}${remaining.toLocaleString()}${C.reset} tokens libres\n\n`;
@@ -133,6 +135,23 @@ async function main() {
     }
     process.exit(0);
   }
+  if (args[0] === 'update' || args[0] === 'upgrade') {
+    console.log(`\n  ${C.gray}Comprobando actualizaciones de Deiza Code...${C.reset}`);
+    const remote = await checkLatestVersion();
+    if (remote && remote.version && !isNewerVersion(remote.version, VERSION)) {
+      console.log(`  ${C.green}✓ Ya estás en la versión más reciente (v${VERSION}).${C.reset}\n`);
+      process.exit(0);
+    }
+    console.log(`  ${C.granateBright}●${C.reset} ${C.white}Actualizando a la versión más reciente (v${remote?.version || VERSION})...${C.reset}`);
+    try {
+      await runAutoUpdate();
+      console.log(`  ${C.green}✓ Deiza Code actualizado con éxito.${C.reset}\n`);
+      process.exit(0);
+    } catch (err) {
+      console.error(Status.error(`Error al actualizar: ${err.message}`));
+      process.exit(1);
+    }
+  }
   if (args[0] === 'session' || args[0] === 'sessions') {
     process.exit(await handleSessionCommand(args));
   }
@@ -186,6 +205,15 @@ async function main() {
     } else if (a === '-p' || a === '--prompt') {
       inlinePrompt = args[i + 1] || null;
       consumed.add(i); consumed.add(i + 1); i++;
+    } else if (a === '--liquid') {
+      cfg.model = 'deiza-liquid';
+      consumed.add(i);
+    } else if (a === '--solid') {
+      cfg.model = 'deiza-solid';
+      consumed.add(i);
+    } else if (a === '--gas') {
+      cfg.model = 'deiza-gas';
+      consumed.add(i);
     } else if (a === '--plan' || a === '--copilot' || a === '--build') {
       cfg.mode = a.slice(2);
       consumed.add(i);

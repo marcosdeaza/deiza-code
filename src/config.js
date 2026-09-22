@@ -2,13 +2,15 @@
  * DEIZA CODE — Configuration & Settings
  * Storage in ~/.deiza/config.json plus DEIZA_* environment overrides.
  *
+ * Multi-Model Architecture (v2.0.0):
+ *   - deiza-liquid: Liquid 5.1 (Default · 1M tokens · Balanced & fast)
+ *   - deiza-solid:  Solid 4.5 (Deep reasoning & architecture)
+ *   - deiza-gas:    Gas 4.1 (Ultra-fast execution & vision)
+ *
  * Two different URLs live in the config:
  *   - accountBase: the Deiza account server (login, plan, usage). Always deiza.org.
  *   - apiBase:     the inference endpoint. deiza.org by default; can point to any
  *                  OpenAI-compatible server (Ollama, vLLM, LM Studio...) after login.
- *
- * Generic variables such as OPENAI_BASE_URL / OPENAI_API_KEY are deliberately ignored:
- * they belong to other tools on the machine and used to hijack the Deiza login.
  */
 
 const fs = require('fs');
@@ -19,12 +21,75 @@ const DEIZA_DIR = path.join(os.homedir(), '.deiza');
 const CONFIG_FILE = path.join(DEIZA_DIR, 'config.json');
 const SESSIONS_DIR = path.join(DEIZA_DIR, 'sessions');
 
-const VERSION = '1.7.4';
+const VERSION = '2.0.0';
 const DEFAULT_DEIZA_API = 'https://deiza.org';
-const DEFAULT_MODEL = 'deiza-omniscient';
+const DEFAULT_MODEL = 'deiza-liquid';
+
+const NATIVE_MODELS = ['deiza-liquid', 'deiza-solid', 'deiza-gas'];
+
+const MODEL_ALIASES = {
+  'liquid': 'deiza-liquid',
+  'liquid-5': 'deiza-liquid',
+  'liquid-5.1': 'deiza-liquid',
+  'liquid5': 'deiza-liquid',
+  '5': 'deiza-liquid',
+  '1': 'deiza-liquid',
+
+  'solid': 'deiza-solid',
+  'solid-4.5': 'deiza-solid',
+  'solid45': 'deiza-solid',
+  '4.5': 'deiza-solid',
+  '2': 'deiza-solid',
+
+  'gas': 'deiza-gas',
+  'gas-4.1': 'deiza-gas',
+  'gas41': 'deiza-gas',
+  '4.1': 'deiza-gas',
+  '3': 'deiza-gas',
+
+  'omniscient': 'deiza-liquid',
+  'deiza-omniscient': 'deiza-liquid',
+  'default': 'deiza-liquid',
+};
+
+const MODEL_INFO = {
+  'deiza-liquid': {
+    id: 'deiza-liquid',
+    shortName: 'liquid',
+    name: 'Deiza Liquid 5.1',
+    badge: 'Liquid 5.1 · 1M tokens',
+    tag: 'LIQUID',
+    desc: 'Motor principal equilibrado. Ventana de 1M tokens, alta velocidad y diffs limpios.',
+    tier: 'Equilibrado',
+    speed: 'Rápido',
+    default: true,
+  },
+  'deiza-solid': {
+    id: 'deiza-solid',
+    shortName: 'solid',
+    name: 'Deiza Solid 4.5',
+    badge: 'Solid 4.5 · Razonamiento profundo',
+    tag: 'SOLID',
+    desc: 'Máximo razonamiento y lógica profunda. Ideal para arquitectura, seguridad y depuración.',
+    tier: 'Razonamiento',
+    speed: 'Analítico',
+    default: false,
+  },
+  'deiza-gas': {
+    id: 'deiza-gas',
+    shortName: 'gas',
+    name: 'Deiza Gas 4.1',
+    badge: 'Gas 4.1 · Ultra-rápido',
+    tag: 'GAS',
+    desc: 'Velocidad ultra-rápida y soporte multimodal nativo. Para iteraciones y scripts ágiles.',
+    tier: 'Velocidad',
+    speed: 'Ultra-rápido',
+    default: false,
+  },
+};
 
 // Build flavor. 'open' = the GitHub edition (any OpenAI-compatible engine can be plugged in);
-// 'closed' = the deiza.org installer edition (Deiza Omniscient only, no endpoint options).
+// 'closed' = the deiza.org installer edition (Deiza native models only, no endpoint options).
 // The bundler injects DEIZA_FLAVOR; running from the source tree defaults to open.
 const FLAVOR = (typeof DEIZA_FLAVOR !== 'undefined' && DEIZA_FLAVOR) || process.env.DEIZA_FLAVOR || 'open';
 const IS_CLOSED = FLAVOR === 'closed';
@@ -54,9 +119,19 @@ function normalizeMode(mode) {
   return MODES.includes(m) ? m : DEFAULT_MODE;
 }
 
+function normalizeModel(modelStr, isCustom = false) {
+  const s = String(modelStr || '').trim();
+  if (isCustom) return s || 'default';
+  const lower = s.toLowerCase();
+  if (MODEL_ALIASES[lower]) return MODEL_ALIASES[lower];
+  if (NATIVE_MODELS.includes(lower)) return lower;
+  return DEFAULT_MODEL;
+}
+
 function loadConfig() {
   ensureDirs();
   let fileConfig = {};
+  let needsResave = false;
   if (fs.existsSync(CONFIG_FILE)) {
     try {
       fileConfig = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
@@ -65,21 +140,31 @@ function loadConfig() {
     }
   }
 
-  // v1.2 saved whatever `apiBase` the OPENAI_BASE_URL hijack produced (a third-party URL), so a
-  // legacy `apiBase` is ignored: only an endpoint chosen explicitly with --endpoint / /endpoint
-  // (stored as `endpoint`) or DEIZA_ENDPOINT counts as a custom inference endpoint.
+  // Purge any stale legacy endpoints (e.g. bedrock-mantle URL from older testing)
+  if (fileConfig.endpoint && (fileConfig.endpoint.includes('bedrock-mantle') || fileConfig.endpoint.includes('amazonaws.com'))) {
+    delete fileConfig.endpoint;
+    delete fileConfig.endpointModel;
+    needsResave = true;
+  }
+
   const accountBase = normalizeUrl(process.env.DEIZA_API_URL || DEFAULT_DEIZA_API);
   const savedEndpoint = IS_CLOSED ? '' : normalizeUrl(fileConfig.endpoint || '');
   const endpoint = IS_CLOSED ? '' : normalizeUrl(process.env.DEIZA_ENDPOINT || savedEndpoint);
   const apiBase = endpoint && !isDeizaHost(endpoint) ? endpoint : accountBase;
   const apiKey = String(process.env.DEIZA_API_KEY || fileConfig.apiKey || '').trim();
   const isCustom = apiBase !== accountBase;
-  // The native engine has exactly one model; a stale "default"/"gpt-4o" from an old config is dropped.
-  const model = isCustom
-    ? String(process.env.DEIZA_MODEL || fileConfig.endpointModel || fileConfig.model || 'default').trim()
-    : DEFAULT_MODEL;
 
-  return {
+  let rawModel = isCustom
+    ? String(process.env.DEIZA_MODEL || fileConfig.endpointModel || fileConfig.model || 'default').trim()
+    : String(process.env.DEIZA_MODEL || fileConfig.model || DEFAULT_MODEL).trim();
+
+  const model = normalizeModel(rawModel, isCustom);
+  if (!isCustom && fileConfig.model && fileConfig.model !== model) {
+    fileConfig.model = model;
+    needsResave = true;
+  }
+
+  const result = {
     ...fileConfig,
     accountBase,
     apiBase,
@@ -94,6 +179,12 @@ function loadConfig() {
     defaultMode: normalizeMode(fileConfig.defaultMode),
     isCustomEndpoint: isCustom,
   };
+
+  if (needsResave) {
+    try { saveConfig(result); } catch {}
+  }
+
+  return result;
 }
 
 function saveConfig(cfg) {
@@ -113,11 +204,15 @@ module.exports = {
   SESSIONS_DIR,
   DEFAULT_DEIZA_API,
   DEFAULT_MODEL,
+  NATIVE_MODELS,
+  MODEL_ALIASES,
+  MODEL_INFO,
   MODES,
   DEFAULT_MODE,
   loadConfig,
   saveConfig,
   isDeizaHost,
   normalizeMode,
+  normalizeModel,
   normalizeUrl,
 };

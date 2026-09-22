@@ -8,8 +8,8 @@ const path = require('path');
 const https = require('https');
 const { exec, spawn, spawnSync } = require('child_process');
 const readline = require('readline');
-const { C, BANNER, Status, box, COMMANDS_REGISTRY, MODE_INFO, modeBadge, renderModes, renderCommandPalette, renderWhoami, renderSessionList, renderSessionInfo, renderCompactionCard, selectSessionInteractive } = require('./ui');
-const { loadConfig, saveConfig, DEFAULT_MODEL, VERSION, MODES, IS_CLOSED, normalizeMode, normalizeUrl, isDeizaHost } = require('./config');
+const { C, BANNER, Status, box, COMMANDS_REGISTRY, MODE_INFO, modeBadge, modelBadge, renderModes, renderModelSelector, renderCommandPalette, renderWhoami, renderSessionList, renderSessionInfo, renderCompactionCard, selectSessionInteractive } = require('./ui');
+const { loadConfig, saveConfig, DEFAULT_MODEL, VERSION, MODES, IS_CLOSED, normalizeMode, normalizeModel, normalizeUrl, isDeizaHost, MODEL_INFO, NATIVE_MODELS } = require('./config');
 const { runLoginFlow, ensureAuthenticated, fetchModels, fetchUsage } = require('./auth');
 const { runAgentTurn, streamCompletion, compactContext } = require('./agent');
 const { Tools } = require('./tools');
@@ -134,17 +134,19 @@ function printHeader(cfg, currentMode, models) {
   const pct = usage && usage.token_limit > 0 ? Math.min(100, Math.round((usage.tokens_used / usage.token_limit) * 100)) : 0;
   const resetLabel = usage?.reset_in_seconds ? `${Math.ceil(usage.reset_in_seconds / 60)}m` : null;
 
+  const currentModelId = cfg.model || DEFAULT_MODEL;
+  const currentModelInfo = MODEL_INFO[currentModelId];
   const engineLabel = cfg.isCustomEndpoint
     ? `${C.gold}Custom ${cfg.apiBase}${C.reset} · ${C.granateBright}${cfg.model}${C.reset}`
-    : `${C.granateBright}Deiza Omniscient${C.reset} ${C.gray}[Liquid 5.1 · 1M tokens]${C.reset}`;
+    : `${C.granateBright}${currentModelInfo?.name || currentModelId}${C.reset} ${C.gray}[${currentModelInfo?.badge || 'Nativo'}]${C.reset} ${C.guide}(/model)${C.reset}`;
 
   let content = '';
   content += `${C.white}Cuenta:${C.reset}     ${C.bold}${cfg.name ? `${cfg.name} · ` : ''}${cfg.email || 'Conectada'}${C.reset} · ${C.granateBold}[${String(plan).toUpperCase()}]${C.reset} · ${C.gray}Uso:${C.reset} ${pct}%${resetLabel ? ` (${resetLabel} para reiniciar)` : ''}\n`;
-  content += `${C.white}Motor:${C.reset}      ${engineLabel}\n`;
+  content += `${C.white}Modelo:${C.reset}     ${engineLabel}\n`;
   content += `${C.white}Modo:${C.reset}       ${modeBadge(currentMode)} ${C.gray}${(MODE_INFO[currentMode] || MODE_INFO.build).desc}${C.reset}\n`;
   content += `${C.white}Workspace:${C.reset}  ${C.gray}${process.cwd()}${C.reset} [${projType}]${branchLabel}`;
 
-  console.log(box('Deiza Code — Entorno de Ejecución', content, C.granateBold));
+  console.log(box(`Deiza Code — Entorno de Ejecución v${VERSION}`, content, C.granateBold));
 }
 
 async function startRepl(initialConfig) {
@@ -193,13 +195,23 @@ async function startRepl(initialConfig) {
       : curTokens >= 1000 ? `${(curTokens / 1000).toFixed(1)}k` : `${curTokens}`;
     const pctLabel = curTokens > 0 ? `${((curTokens / 1000000) * 100).toFixed(1)}%` : '0%';
     const contextBadge = `${C.darkGray}[${C.gold}${tokLabel}${C.darkGray}/1M · ${pctLabel}]${C.reset}`;
-    return `${C.granateBold}deiza${C.reset} ${modeBadge(currentMode)} ${contextBadge} ${C.granateBright}❯${C.reset} `;
+    const mBadge = modelBadge(cfg.model || DEFAULT_MODEL);
+    return `${C.granateBold}deiza${C.reset} ${modeBadge(currentMode)} ${mBadge} ${contextBadge} ${C.granateBright}❯${C.reset} `;
   };
 
   const slashCompleter = (line) => {
     if (line.startsWith('/')) {
-      const hits = COMMANDS_REGISTRY.map(c => c.cmd).filter(c => c.startsWith(line));
-      return [hits.length ? hits : COMMANDS_REGISTRY.map(c => c.cmd), line];
+      const allCmds = [
+        ...COMMANDS_REGISTRY.map(c => c.cmd),
+        '/model liquid',
+        '/model solid',
+        '/model gas',
+        '/liquid',
+        '/solid',
+        '/gas',
+      ];
+      const hits = allCmds.filter(c => c.startsWith(line));
+      return [hits.length ? hits : allCmds, line];
     }
     return [[], line];
   };
@@ -754,28 +766,37 @@ async function startRepl(initialConfig) {
         return;
       }
 
-      if (cmd === '/model' || cmd === '/models') {
-        const targetModel = parts[1]?.trim();
+      if (cmd === '/model' || cmd === '/models' || cmd === '/liquid' || cmd === '/solid' || cmd === '/gas') {
+        let targetArg = parts[1]?.trim();
+        if (cmd === '/liquid') targetArg = 'liquid';
+        else if (cmd === '/solid') targetArg = 'solid';
+        else if (cmd === '/gas') targetArg = 'gas';
+
         if (!cfg.isCustomEndpoint) {
-          if (targetModel && targetModel.toLowerCase() !== DEFAULT_MODEL) {
-            console.log(`\n  ${C.granateBright}✖ Modelo no válido:${C.reset} "${targetModel}"`);
-            console.log(`  Deiza Code funciona con el motor ${C.bold}deiza-omniscient${C.reset}.`);
-            if (!IS_CLOSED) console.log(`  ${C.gray}Para usar modelos locales o de terceros (Ollama, vLLM, OpenAI): /endpoint <url>${C.reset}`);
-            console.log('');
-          } else {
-            cfg.model = DEFAULT_MODEL;
-            saveConfig(cfg);
-            console.log(`\n${C.granateBold}Motor de Deiza Code:${C.reset}`);
-            console.log(`  ${C.green}●${C.reset} ${C.bold}deiza-omniscient${C.reset} (Deiza Liquid 5.1)`);
-            console.log(`    ${C.gray}Infraestructura:${C.reset}  Clusters dedicados de Deiza`);
-            console.log(`    ${C.gray}Especialidad:${C.reset}    Diffs quirúrgicos, multiagentes, visión y ejecución autónoma`);
-            console.log(`    ${C.gray}Uso:${C.reset}             Se descuenta de la cuota de tu plan (${String(cfg.plan || '').toUpperCase()}) · /usage\n`);
+          if (!targetArg || targetArg === 'list' || targetArg === 'ls') {
+            console.log(renderModelSelector(cfg.model));
+            rl.prompt();
+            return;
           }
-        } else if (targetModel) {
-          cfg.model = targetModel;
-          cfg.endpointModel = targetModel;
+
+          const resolved = normalizeModel(targetArg);
+          if (resolved && MODEL_INFO[resolved]) {
+            cfg.model = resolved;
+            saveConfig(cfg);
+            const info = MODEL_INFO[resolved];
+            console.log(`\n  ${C.green}✓ Modelo cambiado a:${C.reset} ${C.bold}${info.name}${C.reset} ${C.gray}[${info.badge}]${C.reset}`);
+            console.log(`    ${C.gray}${info.desc}${C.reset}\n`);
+            rl.setPrompt(getPrompt());
+          } else {
+            console.log(`\n  ${C.granateBright}✖ Modelo desconocido:${C.reset} "${targetArg}"`);
+            console.log(renderModelSelector(cfg.model));
+          }
+        } else if (targetArg) {
+          cfg.model = targetArg;
+          cfg.endpointModel = targetArg;
           saveConfig(cfg);
-          console.log(`  ${C.green}✓ Modelo del endpoint cambiado a ${C.bold}${targetModel}${C.reset}\n`);
+          console.log(`  ${C.green}✓ Modelo del endpoint cambiado a ${C.bold}${targetArg}${C.reset}\n`);
+          rl.setPrompt(getPrompt());
         } else {
           console.log(`\n  ${C.white}Modelo actual:${C.reset} ${cfg.model} ${C.gray}(endpoint ${cfg.apiBase})${C.reset}`);
           console.log(`  ${C.gray}Usa /model <id> para cambiarlo, o /endpoint deiza para volver al motor nativo.${C.reset}\n`);
@@ -1011,4 +1032,5 @@ module.exports = {
   startRepl,
   checkLatestVersion,
   isNewerVersion,
+  runAutoUpdate,
 };

@@ -3,7 +3,7 @@
  * Granate / Burgundy palette (#8C2F39) with clean, modern developer UX.
  */
 
-const { VERSION, IS_CLOSED } = require('./config');
+const { VERSION, IS_CLOSED, MODEL_INFO, NATIVE_MODELS } = require('./config');
 
 const C = {
   reset: '\x1b[0m',
@@ -55,6 +55,35 @@ const MODE_INFO = {
 function modeBadge(mode) {
   const info = MODE_INFO[mode] || MODE_INFO.build;
   return info.badge;
+}
+
+const MODEL_BADGES = {
+  'deiza-liquid': '\x1b[1;38;5;81m[LIQUID 5.1]\x1b[0m',
+  'deiza-solid': '\x1b[1m\x1b[38;2;184;74;85m[SOLID 4.5]\x1b[0m',
+  'deiza-gas': '\x1b[1;38;5;114m[GAS 4.1]\x1b[0m',
+};
+
+function modelBadge(modelId) {
+  const m = String(modelId || '').toLowerCase();
+  return MODEL_BADGES[m] || `\x1b[1;38;5;214m[${String(modelId || 'CUSTOM').toUpperCase()}]\x1b[0m`;
+}
+
+function renderModelSelector(currentModel = 'deiza-liquid') {
+  let out = `\n  ${C.granateBold}Modelos Nativos de Deiza (Arquitectura Multicapa Mantle):${C.reset}\n`;
+  const list = [
+    { num: '1', key: 'deiza-liquid', short: 'liquid', info: MODEL_INFO['deiza-liquid'], color: C.cyan },
+    { num: '2', key: 'deiza-solid',  short: 'solid',  info: MODEL_INFO['deiza-solid'],  color: C.granateBright },
+    { num: '3', key: 'deiza-gas',    short: 'gas',    info: MODEL_INFO['deiza-gas'],    color: C.green },
+  ];
+  for (const item of list) {
+    const isAct = item.key === currentModel || item.short === currentModel;
+    const mark = isAct ? `${C.green}●${C.reset}` : `${C.darkGray}○${C.reset}`;
+    const actBadge = isAct ? ` ${C.green}[ACTIVO]${C.reset}` : '';
+    out += `  ${mark} ${C.bold}[${item.num}]${C.reset} ${item.color}${item.info.name.padEnd(18)}${C.reset} ${C.white}/model ${item.short}${C.reset}${actBadge}\n`;
+    out += `      ${C.gray}${item.info.desc}${C.reset}\n`;
+  }
+  out += `\n  ${C.gray}Cambia escribiendo ${C.white}/model liquid${C.gray}, ${C.white}/model solid${C.gray} o ${C.white}/model gas${C.gray} (o ${C.white}/model 1${C.gray}, ${C.white}2${C.gray}, ${C.white}3${C.gray}).${C.reset}\n`;
+  return out;
 }
 
 function renderModes(current) {
@@ -369,7 +398,10 @@ const COMMANDS_REGISTRY = [
   { cmd: '/logout', args: '', desc: 'Cerrar sesión en esta máquina', cat: 'Cuenta' },
   { cmd: '/update', args: '', desc: 'Comprobar y actualizar Deiza Code a la última versión', cat: 'Sistema' },
   { cmd: '/upgrade', args: '', desc: 'Alias de /update (comprobar y actualizar a la última versión)', cat: 'Sistema' },
-  { cmd: '/model', args: '[id]', desc: 'Motor activo (deiza-omniscient) o modelo del endpoint custom', cat: 'Configuración' },
+  { cmd: '/model', args: '[liquid|solid|gas]', desc: 'Cambiar de modelo (Liquid 5.1, Solid 4.5, Gas 4.1)', cat: 'Configuración' },
+  { cmd: '/liquid', args: '', desc: 'Activar modelo Deiza Liquid 5.1 (Equilibrado · 1M tokens)', cat: 'Modelos' },
+  { cmd: '/solid', args: '', desc: 'Activar modelo Deiza Solid 4.5 (Razonamiento profundo y arquitectura)', cat: 'Modelos' },
+  { cmd: '/gas', args: '', desc: 'Activar modelo Deiza Gas 4.1 (Velocidad ultra-rápida y visión)', cat: 'Modelos' },
   { cmd: '/endpoint', args: '[url|deiza]', desc: 'Usar otro motor OpenAI-compatible (Ollama, vLLM...) o volver a Deiza', cat: 'Configuración' },
   { cmd: '/config', args: '', desc: 'Ver o modificar la configuración local', cat: 'Configuración' },
   { cmd: '/init', args: '', desc: 'Crear directivas .deizarules en la raíz del repo', cat: 'Proyecto' },
@@ -638,7 +670,9 @@ module.exports = {
   formatDuration,
   MODE_INFO,
   modeBadge,
+  modelBadge,
   renderModes,
+  renderModelSelector,
   Status,
   renderDiff,
   box,

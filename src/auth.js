@@ -14,7 +14,7 @@ const crypto = require('crypto');
 const readline = require('readline');
 const { spawn } = require('child_process');
 const { C, box } = require('./ui');
-const { saveConfig, DEFAULT_DEIZA_API } = require('./config');
+const { saveConfig, DEFAULT_DEIZA_API, isDeizaHost } = require('./config');
 
 const LOGIN_TIMEOUT_MS = 5 * 60 * 1000;
 const PREFERRED_PORT = 54321;
@@ -24,11 +24,17 @@ function openBrowser(url) {
   try {
     let child;
     if (process.platform === 'win32') {
-      // `start` treats the first quoted argument as the window title: an empty title
-      // must come first or Windows opens a blank CMD window named after the URL.
-      child = spawn('cmd.exe', ['/d', '/s', '/c', `start "" "${url}"`], {
-        detached: true, stdio: 'ignore', windowsHide: true, windowsVerbatimArguments: true,
-      });
+      // Use rundll32 or PowerShell Start-Process which never open a console window
+      // or misinterpret URL query parameters like &state=...
+      try {
+        child = spawn('rundll32.exe', ['url.dll,FileProtocolHandler', url], {
+          detached: true, stdio: 'ignore', windowsHide: true,
+        });
+      } catch {
+        child = spawn('powershell.exe', ['-NoProfile', '-Command', `Start-Process '${url.replace(/'/g, "''")}'`], {
+          detached: true, stdio: 'ignore', windowsHide: true,
+        });
+      }
     } else if (process.platform === 'darwin') {
       child = spawn('open', [url], { detached: true, stdio: 'ignore' });
     } else {
@@ -209,7 +215,7 @@ h1{font-size:22px;margin:0 0 10px;color:#e17080}p{color:#a8a29e;line-height:1.5;
  * to http://127.0.0.1:<port>/callback. The user can also paste the key by hand meanwhile.
  */
 function runBrowserOAuthFlow(currentConfig = {}, { rl } = {}) {
-  const accountBase = currentConfig.accountBase || DEFAULT_DEIZA_API;
+  const accountBase = isDeizaHost(currentConfig.accountBase) ? currentConfig.accountBase : DEFAULT_DEIZA_API;
   const state = crypto.randomBytes(16).toString('hex');
 
   return new Promise((resolve, reject) => {
@@ -313,7 +319,7 @@ function runBrowserOAuthFlow(currentConfig = {}, { rl } = {}) {
  * Manual key input with backend verification (SSH, Docker, servers).
  */
 async function fallbackManualLogin(currentConfig = {}, { rl } = {}) {
-  const accountBase = currentConfig.accountBase || DEFAULT_DEIZA_API;
+  const accountBase = isDeizaHost(currentConfig.accountBase) ? currentConfig.accountBase : DEFAULT_DEIZA_API;
   console.log(`\n  1. Abre en cualquier navegador: ${C.granate}${accountBase}/cli/auth${C.reset}`);
   console.log(`  2. Pulsa "Autorizar Deiza Code" y copia la clave (empieza por ${C.bold}dz_${C.reset})\n`);
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -354,7 +360,7 @@ async function runLoginFlow(currentConfig = {}, { rl, reason } = {}) {
  * instead of a cryptic API error later.
  */
 async function ensureAuthenticated(cfg, { rl, force = false } = {}) {
-  const accountBase = cfg.accountBase || DEFAULT_DEIZA_API;
+  const accountBase = isDeizaHost(cfg.accountBase) ? cfg.accountBase : DEFAULT_DEIZA_API;
   if (!force && cfg.apiKey) {
     const usage = await fetchUsage(cfg.apiKey, accountBase);
     if (usage && usage.plan && usage.plan !== 'free') {
