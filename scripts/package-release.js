@@ -20,7 +20,7 @@ const { VERSION } = require('../src/config');
 const versionInfo = {
   version: VERSION,
   release_date: new Date().toISOString().split('T')[0],
-  notes: `v${VERSION}: Las sesiones largas ya no fallan: Deiza Code compacta la memoria según la ventana real de cada modelo (Liquid 5 y Gas 4.5: 256K tokens; Solid 4.6: 198K; Vainilla: 128K). Nombres de modelos actualizados.`,
+  notes: `v${VERSION}: Si se corta la conexión con el motor (por ejemplo durante una actualización del servidor), Deiza Code reanuda solo en vez de mostrar un error. Las sesiones largas se compactan según la ventana real de cada modelo.`,
   platforms: {
     darwin: "https://deiza.org/downloads/deiza-code.js",
     linux: "https://deiza.org/downloads/deiza-code.js",

@@ -296,13 +296,15 @@ async function streamCompletion({ apiBase, apiKey, model, messages, tools, onChu
 /**
  * Executes streamCompletion with automatic retry on transient connection drops or 502/503/504 errors
  */
-async function streamCompletionWithRetry(params, maxRetries = 2) {
+async function streamCompletionWithRetry(params, maxRetries = 5) {
+  // Transient: dropped or refused connections (a server restart cuts streams with "aborted"),
+  // gateway errors and the engine's own "interrumpida" notices. Backoff covers ~40 s in total.
+  const delays = [2000, 4000, 7000, 10000, 15000];
   let lastErr;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       if (attempt > 0) {
-        const delay = attempt * 2000;
-        await new Promise(r => setTimeout(r, delay));
+        await new Promise(r => setTimeout(r, delays[Math.min(attempt - 1, delays.length - 1)]));
       }
       return await streamCompletion(params);
     } catch (err) {
@@ -311,11 +313,14 @@ async function streamCompletionWithRetry(params, maxRetries = 2) {
         throw err;
       }
       const msg = String(err.message || '');
-      const isTransient = /timeout|inactividad|interrumpid|cerró antes|econnreset|econnrefused|socket|premature|502|503|504/i.test(msg) || (err.status >= 500 && err.status <= 504);
+      const code = String(err.code || '');
+      const isTransient = /timeout|inactividad|interrumpid|cerró antes|aborted|econnreset|econnrefused|epipe|socket|premature|reset|upstream|no se pudo conectar|502|503|504/i.test(msg)
+        || /ECONNRESET|ECONNREFUSED|EPIPE|ETIMEDOUT|EAI_AGAIN/.test(code)
+        || (err.status >= 500 && err.status <= 504);
       if (!isTransient || attempt === maxRetries) {
         throw err;
       }
-      process.stdout.write(`\n  \x1b[38;2;230;180;80m⚠ Conexión con el motor interrumpida (${err.message || 'error'}). Reanudando automáticamente... (${attempt + 1}/${maxRetries})\x1b[0m\n`);
+      process.stdout.write(`\n  \x1b[38;2;230;180;80m⚠ Conexión con el motor interrumpida. Reanudando automáticamente... (${attempt + 1}/${maxRetries})\x1b[0m\n`);
     }
   }
   throw lastErr;

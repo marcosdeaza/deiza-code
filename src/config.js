@@ -22,7 +22,7 @@ const DEIZA_DIR = path.join(os.homedir(), '.deiza');
 const CONFIG_FILE = path.join(DEIZA_DIR, 'config.json');
 const SESSIONS_DIR = path.join(DEIZA_DIR, 'sessions');
 
-const VERSION = '2.1.1';
+const VERSION = '2.1.2';
 const DEFAULT_DEIZA_API = 'https://deiza.org';
 const DEFAULT_MODEL = 'deiza-liquid';
 
