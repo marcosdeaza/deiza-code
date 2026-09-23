@@ -20,7 +20,7 @@ const { VERSION } = require('../src/config');
 const versionInfo = {
   version: VERSION,
   release_date: new Date().toISOString().split('T')[0],
-  notes: `v${VERSION}: Soporte oficial para Deiza Liquid 5 (1M tokens), Deiza Solid 4.5, Deiza Gas 4.1 y el nuevo modelo Deiza Vainilla (conversacional y 100% ilimitado). Selector /model interactivo mejorado, atajos directos y acceso general abierto para todas las cuentas.`,
+  notes: `v${VERSION}: Las sesiones largas ya no fallan: Deiza Code compacta la memoria según la ventana real de cada modelo (Liquid 5 y Gas 4.5: 256K tokens; Solid 4.6: 198K; Vainilla: 128K). Nombres de modelos actualizados.`,
   platforms: {
     darwin: "https://deiza.org/downloads/deiza-code.js",
     linux: "https://deiza.org/downloads/deiza-code.js",

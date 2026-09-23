@@ -19,14 +19,17 @@ const { StringDecoder } = require('string_decoder');
 const { Tools, TOOL_DEFINITIONS, MAX_TOOL_OUTPUT, isCommandRisky, isCommandCatastrophic, previewChange } = require('./tools');
 const { Status, C, createLiveLine, createSpinner, formatBytes, formatDuration, createMarkdownStream, printToolCard } = require('./ui');
 const { buildSystemPrompt } = require('./prompt');
-const { isDeizaHost } = require('./config');
+const { isDeizaHost, contextLimit } = require('./config');
 const { getActiveContextTokens } = require('./session');
 
 const MAX_TURNS = 120;             // tool rounds per user request (a long feature is many rounds)
 const MAX_CONTINUATIONS = 6;       // automatic "continue" after an output-limit cut, per request
 const MAX_FAILED_ROUNDS = 4;       // consecutive rounds where every tool call failed -> stop and tell the user
-const MAX_CONTEXT_CHARS = 3500000; // ~900k tokens: allows full use of Kimi 2.5 1M context window
-const COMPACT_THRESHOLD_TOKENS = 750000; // Auto-compaction trigger threshold (75% of 1M)
+// Defaults for the largest native window (256K tokens); per-model values come from contextLimit().
+const MAX_CONTEXT_CHARS = 680000;
+const COMPACT_THRESHOLD_TOKENS = 180000;
+const compactThreshold = (cfg) => Math.floor(contextLimit(cfg && !cfg.isCustomEndpoint ? cfg.model : cfg && cfg.model) * 0.7);
+const maxContextChars = (cfg) => Math.floor(contextLimit(cfg && cfg.model) * 2.6);
 const DEFAULT_MAX_TOKENS = 16384;  // custom endpoints
 const DEIZA_MAX_TOKENS = 32768;    // the Deiza engine allows long outputs: whole files in one call
 
@@ -322,9 +325,9 @@ async function streamCompletionWithRetry(params, maxRetries = 2) {
  * Keep the conversation within the model's window: drop the oldest exchanges first, never the
  * system prompt, and never leave an orphan tool result at the top.
  */
-function trimContext(messages) {
+function trimContext(messages, maxChars = MAX_CONTEXT_CHARS) {
   const size = () => messages.reduce((n, m) => n + JSON.stringify(m).length, 0);
-  while (messages.length > 6 && size() > MAX_CONTEXT_CHARS) {
+  while (messages.length > 6 && size() > maxChars) {
     messages.splice(1, 1);
     while (messages.length > 2 && messages[1].role === 'tool') messages.splice(1, 1);
   }
@@ -371,13 +374,13 @@ function argCommand(rawArgs) {
  * Compresses historical turns, tool outputs, and discussions into a dense, structured
  * architectural summary, drastically reducing active tokens while preserving full memory.
  */
-function compactContext(messages, { force = false } = {}) {
+function compactContext(messages, { force = false, threshold = COMPACT_THRESHOLD_TOKENS } = {}) {
   if (!Array.isArray(messages) || messages.length < 4) {
     return { compacted: false, reason: 'history_too_short' };
   }
 
   const beforeTokens = getActiveContextTokens(messages);
-  if (!force && beforeTokens < COMPACT_THRESHOLD_TOKENS) {
+  if (!force && beforeTokens < threshold) {
     return { compacted: false, reason: 'under_threshold', beforeTokens };
   }
 
@@ -715,15 +718,15 @@ async function runAgentTurn({ cfg, messages, userInput, confirmCallback, mode = 
     stats.turns++;
 
     // Auto-compaction if context approaches saturation (> 750k tokens)
-    if (getActiveContextTokens(messages) >= COMPACT_THRESHOLD_TOKENS) {
-      if (!quiet) console.log(`\n  ${C.gold}● [compactor]${C.reset} ${C.gray}El contexto supera los ${(COMPACT_THRESHOLD_TOKENS / 1000).toFixed(0)}k tokens. Compactando memoria para mantener máxima velocidad y precisión...${C.reset}`);
+    if (getActiveContextTokens(messages) >= compactThreshold(cfg)) {
+      if (!quiet) console.log(`\n  ${C.gold}● [compactor]${C.reset} ${C.gray}El contexto supera los ${(compactThreshold(cfg) / 1000).toFixed(0)}k tokens. Compactando memoria para mantener máxima velocidad y precisión...${C.reset}`);
       const comp = compactContext(messages, { force: true });
       if (comp.compacted && !quiet) {
         console.log(`  ${C.green}✓ Contexto compactado:${C.reset} de ${C.gold}${comp.beforeTokens.toLocaleString()} tokens${C.reset} a ${C.green}${comp.afterTokens.toLocaleString()} tokens${C.reset} (${comp.freedPct}% liberado)\n`);
       }
     }
 
-    trimContext(messages);
+    trimContext(messages, maxContextChars(cfg));
 
     const promptLen = JSON.stringify(messages).length;
     const estPromptTok = Math.max(1, Math.ceil(promptLen / 3.8));

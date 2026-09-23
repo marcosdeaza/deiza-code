@@ -2,10 +2,11 @@
  * DEIZA CODE — Configuration & Settings
  * Storage in ~/.deiza/config.json plus DEIZA_* environment overrides.
  *
- * Multi-Model Architecture (v2.0.0):
- *   - deiza-liquid: Liquid 5.1 (Default · 1M tokens · Balanced & fast)
- *   - deiza-solid:  Solid 4.5 (Deep reasoning & architecture)
- *   - deiza-gas:    Gas 4.1 (Ultra-fast execution & vision)
+ * Native models (context window in tokens):
+ *   - deiza-liquid:   Liquid 5   (default, balanced and agentic, 256K)
+ *   - deiza-solid:    Solid 4.6  (deep reasoning and architecture, 198K)
+ *   - deiza-gas:      Gas 4.5    (fastest, reads images, 256K)
+ *   - deiza-vainilla: Vainilla   (conversational, no tools, 128K)
  *
  * Two different URLs live in the config:
  *   - accountBase: the Deiza account server (login, plan, usage). Always deiza.org.
@@ -21,7 +22,7 @@ const DEIZA_DIR = path.join(os.homedir(), '.deiza');
 const CONFIG_FILE = path.join(DEIZA_DIR, 'config.json');
 const SESSIONS_DIR = path.join(DEIZA_DIR, 'sessions');
 
-const VERSION = '2.1.0';
+const VERSION = '2.1.1';
 const DEFAULT_DEIZA_API = 'https://deiza.org';
 const DEFAULT_MODEL = 'deiza-liquid';
 
@@ -62,9 +63,9 @@ const MODEL_INFO = {
     id: 'deiza-liquid',
     shortName: 'liquid',
     name: 'Deiza Liquid 5',
-    badge: 'Liquid 5 · 1M tokens',
+    badge: 'Liquid 5 · 256K tokens',
     tag: 'LIQUID 5',
-    desc: 'Motor principal autónomo. Ventana de 1M tokens, alta velocidad y diffs limpios.',
+    desc: 'Motor principal autónomo. Ventana de 256K tokens, alta velocidad y diffs limpios.',
     tier: 'Equilibrado',
     speed: 'Rápido',
     default: true,
@@ -72,9 +73,9 @@ const MODEL_INFO = {
   'deiza-solid': {
     id: 'deiza-solid',
     shortName: 'solid',
-    name: 'Deiza Solid 4.5',
-    badge: 'Solid 4.5 · Razonamiento profundo',
-    tag: 'SOLID 4.5',
+    name: 'Deiza Solid 4.6',
+    badge: 'Solid 4.6 · Razonamiento profundo',
+    tag: 'SOLID 4.6',
     desc: 'Máximo razonamiento y lógica profunda. Ideal para arquitectura, seguridad y depuración.',
     tier: 'Razonamiento',
     speed: 'Analítico',
@@ -83,9 +84,9 @@ const MODEL_INFO = {
   'deiza-gas': {
     id: 'deiza-gas',
     shortName: 'gas',
-    name: 'Deiza Gas 4.1',
-    badge: 'Gas 4.1 · Ultra-rápido',
-    tag: 'GAS 4.1',
+    name: 'Deiza Gas 4.5',
+    badge: 'Gas 4.5 · Ultra-rápido',
+    tag: 'GAS 4.5',
     desc: 'Velocidad ultra-rápida y soporte multimodal nativo. Para iteraciones y scripts ágiles.',
     tier: 'Velocidad',
     speed: 'Ultra-rápido',
@@ -103,6 +104,18 @@ const MODEL_INFO = {
     default: false,
   },
 };
+
+// Real context windows (tokens) of the native engines. Compaction starts at 70 % of the window of
+// the model in use; custom endpoints get a conservative 128K.
+const CONTEXT_LIMITS = {
+  'deiza-liquid': 262144,
+  'deiza-solid': 202752,
+  'deiza-gas': 262144,
+  'deiza-vainilla': 131072,
+};
+function contextLimit(model) {
+  return CONTEXT_LIMITS[model] || (model && String(model).startsWith('deiza') ? 262144 : 131072);
+}
 
 // Build flavor. 'open' = the GitHub edition (any OpenAI-compatible engine can be plugged in);
 // 'closed' = the deiza.org installer edition (Deiza native models only, no endpoint options).
@@ -212,6 +225,8 @@ function saveConfig(cfg) {
 }
 
 module.exports = {
+  CONTEXT_LIMITS,
+  contextLimit,
   VERSION,
   FLAVOR,
   IS_CLOSED,

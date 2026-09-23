@@ -70,7 +70,7 @@ function modelBadge(modelId) {
 }
 
 function renderModelSelector(currentModel = 'deiza-liquid') {
-  let out = `\n  ${C.granateBold}Modelos Nativos de Deiza (Arquitectura Multicapa Mantle):${C.reset}\n`;
+  let out = `\n  ${C.granateBold}Modelos Nativos de Deiza:${C.reset}\n`;
   const list = [
     { num: '1', key: 'deiza-liquid',   short: 'liquid',   info: MODEL_INFO['deiza-liquid'],   color: C.cyan },
     { num: '2', key: 'deiza-solid',    short: 'solid',    info: MODEL_INFO['deiza-solid'],    color: C.granateBright },
@@ -400,10 +400,10 @@ const COMMANDS_REGISTRY = [
   { cmd: '/logout', args: '', desc: 'Cerrar sesión en esta máquina', cat: 'Cuenta' },
   { cmd: '/update', args: '', desc: 'Comprobar y actualizar Deiza Code a la última versión', cat: 'Sistema' },
   { cmd: '/upgrade', args: '', desc: 'Alias de /update (comprobar y actualizar a la última versión)', cat: 'Sistema' },
-  { cmd: '/model', args: '[1-4|nombre]', desc: 'Cambiar de modelo (Liquid 5, Solid 4.5, Gas 4.1, Vainilla)', cat: 'Configuración' },
-  { cmd: '/liquid', args: '', desc: 'Activar modelo Deiza Liquid 5 (Equilibrado · 1M tokens)', cat: 'Modelos' },
-  { cmd: '/solid', args: '', desc: 'Activar modelo Deiza Solid 4.5 (Razonamiento profundo y arquitectura)', cat: 'Modelos' },
-  { cmd: '/gas', args: '', desc: 'Activar modelo Deiza Gas 4.1 (Velocidad ultra-rápida y visión)', cat: 'Modelos' },
+  { cmd: '/model', args: '[1-4|nombre]', desc: 'Cambiar de modelo (Liquid 5, Solid 4.6, Gas 4.5, Vainilla)', cat: 'Configuración' },
+  { cmd: '/liquid', args: '', desc: 'Activar modelo Deiza Liquid 5 (Equilibrado · 256K tokens)', cat: 'Modelos' },
+  { cmd: '/solid', args: '', desc: 'Activar modelo Deiza Solid 4.6 (Razonamiento profundo y arquitectura)', cat: 'Modelos' },
+  { cmd: '/gas', args: '', desc: 'Activar modelo Deiza Gas 4.5 (Velocidad ultra-rápida y visión)', cat: 'Modelos' },
   { cmd: '/vainilla', args: '', desc: 'Activar modelo Deiza Vainilla (Ultra-rápido, conversacional y 100% ilimitado)', cat: 'Modelos' },
   { cmd: '/endpoint', args: '[url|deiza]', desc: 'Usar otro motor OpenAI-compatible (Ollama, vLLM...) o volver a Deiza', cat: 'Configuración' },
   { cmd: '/config', args: '', desc: 'Ver o modificar la configuración local', cat: 'Configuración' },
@@ -527,10 +527,11 @@ function renderSessionInfo(session) {
 /**
  * Renders the context compaction results box (Claude Code style)
  */
-function renderCompactionCard(beforeTokens, afterTokens, freedPct) {
+function renderCompactionCard(beforeTokens, afterTokens, freedPct, limit = 262144) {
+  const lim = `${Math.round(limit / 1024)}K`;
   let content = '';
-  content += `${C.white}Contexto Previo:      ${C.gold}${beforeTokens.toLocaleString()}${C.reset} tokens (${((beforeTokens / 1000000) * 100).toFixed(1)}% del 1M)\n`;
-  content += `${C.white}Contexto Compactado:  ${C.green}${C.bold}${afterTokens.toLocaleString()}${C.reset} tokens (${((afterTokens / 1000000) * 100).toFixed(2)}% del 1M)\n`;
+  content += `${C.white}Contexto Previo:      ${C.gold}${beforeTokens.toLocaleString()}${C.reset} tokens (${((beforeTokens / limit) * 100).toFixed(1)}% de ${lim})\n`;
+  content += `${C.white}Contexto Compactado:  ${C.green}${C.bold}${afterTokens.toLocaleString()}${C.reset} tokens (${((afterTokens / limit) * 100).toFixed(2)}% de ${lim})\n`;
   content += `${C.white}Espacio Recuperado:   ${C.cyan}${C.bold}${freedPct}% de reducción${C.reset} (espacio libre)\n\n`;
   content += `${C.gray}✓ La memoria del proyecto (archivos editados, comandos y decisiones) se preservó intacta.${C.reset}`;
   return box('Compactación de Contexto (Estilo Claude Code)', content, C.granate);

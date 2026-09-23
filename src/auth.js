@@ -154,9 +154,9 @@ async function fetchUsage(apiKey, accountBase = DEFAULT_DEIZA_API) {
 
 async function fetchModels(apiKey, accountBase = DEFAULT_DEIZA_API) {
   const fallback = [
-    { id: 'deiza-liquid', name: 'Deiza Liquid 5', description: 'Motor principal autónomo. Ventana de 1M tokens.' },
-    { id: 'deiza-solid', name: 'Deiza Solid 4.5', description: 'Razonamiento profundo y arquitectura.' },
-    { id: 'deiza-gas', name: 'Deiza Gas 4.1', description: 'Velocidad ultra-rápida y soporte multimodal.' },
+    { id: 'deiza-liquid', name: 'Deiza Liquid 5', description: 'Motor principal autónomo. Ventana de 256K tokens.' },
+    { id: 'deiza-solid', name: 'Deiza Solid 4.6', description: 'Razonamiento profundo y arquitectura.' },
+    { id: 'deiza-gas', name: 'Deiza Gas 4.5', description: 'Velocidad ultra-rápida y soporte multimodal.' },
     { id: 'deiza-vainilla', name: 'Deiza Vainilla', description: 'Modelo suave, conversacional y 100% ilimitado.' },
   ];
   const res = await jsonRequest('GET', `${accountBase}/api/code/models`, { apiKey, timeout: 5000 });

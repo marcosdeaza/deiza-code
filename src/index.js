@@ -9,7 +9,7 @@ const https = require('https');
 const { exec, spawn, spawnSync } = require('child_process');
 const readline = require('readline');
 const { C, BANNER, Status, box, COMMANDS_REGISTRY, MODE_INFO, modeBadge, modelBadge, renderModes, renderModelSelector, renderCommandPalette, renderWhoami, renderSessionList, renderSessionInfo, renderCompactionCard, selectSessionInteractive } = require('./ui');
-const { loadConfig, saveConfig, DEFAULT_MODEL, VERSION, MODES, IS_CLOSED, normalizeMode, normalizeModel, normalizeUrl, isDeizaHost, MODEL_INFO, NATIVE_MODELS } = require('./config');
+const { loadConfig, saveConfig, DEFAULT_MODEL, VERSION, MODES, IS_CLOSED, normalizeMode, normalizeModel, normalizeUrl, isDeizaHost, MODEL_INFO, NATIVE_MODELS, contextLimit } = require('./config');
 const { runLoginFlow, ensureAuthenticated, fetchModels, fetchUsage } = require('./auth');
 const { runAgentTurn, streamCompletion, compactContext } = require('./agent');
 const { Tools } = require('./tools');
@@ -177,11 +177,10 @@ async function startRepl(initialConfig) {
   if (activeSession && Array.isArray(activeSession.messages) && activeSession.messages.length > 0) {
     messages.push(...activeSession.messages);
     const ctxTokens = getActiveContextTokens(messages);
-    const tokLabel = ctxTokens >= 1000000
-      ? `${(ctxTokens / 1000000).toFixed(2)}M`
-      : ctxTokens >= 1000 ? `${(ctxTokens / 1000).toFixed(1)}k` : `${ctxTokens}`;
-    const pctLabel = ((ctxTokens / 1000000) * 100).toFixed(2);
-    console.log(`  ${C.granateBright}● Sesión persistente restaurada:${C.reset} ${C.white}${activeSession.title}${C.reset} ${C.gray}(${messages.length} mensajes · ${C.gold}${tokLabel} tokens en contexto activo${C.gray} [${pctLabel}% del 1M])${C.reset}`);
+    const ctxLimit = contextLimit(cfg.model || DEFAULT_MODEL);
+    const tokLabel = ctxTokens >= 1000 ? `${(ctxTokens / 1000).toFixed(1)}k` : `${ctxTokens}`;
+    const pctLabel = ((ctxTokens / ctxLimit) * 100).toFixed(2);
+    console.log(`  ${C.granateBright}● Sesión persistente restaurada:${C.reset} ${C.white}${activeSession.title}${C.reset} ${C.gray}(${messages.length} mensajes · ${C.gold}${tokLabel} tokens en contexto activo${C.gray} [${pctLabel}% de ${Math.round(ctxLimit / 1024)}K])${C.reset}`);
     console.log(`  ${C.gray}Usa ${C.white}/new${C.gray} para iniciar limpia, ${C.white}/session${C.gray} para cambiar o ${C.white}/compact${C.gray} para comprimir memoria.${C.reset}\n`);
   } else {
     activeSession = createSession(process.cwd(), currentMode);
@@ -191,11 +190,10 @@ async function startRepl(initialConfig) {
 
   const getPrompt = () => {
     const curTokens = getActiveContextTokens(messages);
-    const tokLabel = curTokens >= 1000000
-      ? `${(curTokens / 1000000).toFixed(2)}M`
-      : curTokens >= 1000 ? `${(curTokens / 1000).toFixed(1)}k` : `${curTokens}`;
-    const pctLabel = curTokens > 0 ? `${((curTokens / 1000000) * 100).toFixed(1)}%` : '0%';
-    const contextBadge = `${C.darkGray}[${C.gold}${tokLabel}${C.darkGray}/1M · ${pctLabel}]${C.reset}`;
+    const curLimit = contextLimit(cfg.model || DEFAULT_MODEL);
+    const tokLabel = curTokens >= 1000 ? `${(curTokens / 1000).toFixed(1)}k` : `${curTokens}`;
+    const pctLabel = curTokens > 0 ? `${((curTokens / curLimit) * 100).toFixed(1)}%` : '0%';
+    const contextBadge = `${C.darkGray}[${C.gold}${tokLabel}${C.darkGray}/${Math.round(curLimit / 1024)}K · ${pctLabel}]${C.reset}`;
     const mBadge = modelBadge(cfg.model || DEFAULT_MODEL);
     return `${C.granateBold}deiza${C.reset} ${modeBadge(currentMode)} ${mBadge} ${contextBadge} ${C.granateBright}❯${C.reset} `;
   };
@@ -590,15 +588,16 @@ async function startRepl(initialConfig) {
 
       if (cmd === '/tokens' || cmd === '/context') {
         const activeContext = getActiveContextTokens(messages);
-        const maxTokens = 1000000;
+        const maxTokens = contextLimit(cfg.model || DEFAULT_MODEL);
         const pct = ((activeContext / maxTokens) * 100).toFixed(2);
         const remaining = Math.max(0, maxTokens - activeContext);
         const sessionConsumed = activeSession?.tokens?.total || 0;
 
         let content = '';
-        content += `${C.white}Motor de Inferencia:${C.reset}     ${C.granateBright}${cfg.isCustomEndpoint ? cfg.model : 'deiza-omniscient'}${C.reset} ${cfg.isCustomEndpoint ? `${C.gray}(${cfg.apiBase})${C.reset}` : `${C.gray}(Liquid 5.1 / Kimi K2.5 · AWS Cluster)${C.reset}`}\n`;
-        content += `${C.white}Ventana de Contexto:${C.reset}     ${C.bold}1,000,000 (1M)${C.reset} tokens nativos\n`;
-        content += `${C.white}Contexto Activo en Memoria:${C.reset} ${C.bold}${C.green}${activeContext.toLocaleString()}${C.reset} / 1,000,000 tokens (${pct}% ocupado)\n`;
+        content += `${C.white}Motor de Inferencia:${C.reset}     ${C.granateBright}${cfg.isCustomEndpoint ? cfg.model : (MODEL_INFO[cfg.model || DEFAULT_MODEL] || MODEL_INFO[DEFAULT_MODEL]).name}${C.reset} ${cfg.isCustomEndpoint ? `${C.gray}(${cfg.apiBase})${C.reset}` : `${C.gray}(infraestructura de Deiza)${C.reset}`}
+`;
+        content += `${C.white}Ventana de Contexto:${C.reset}     ${C.bold}${maxTokens.toLocaleString()}${C.reset} tokens\n`;
+        content += `${C.white}Contexto Activo en Memoria:${C.reset} ${C.bold}${C.green}${activeContext.toLocaleString()}${C.reset} / ${maxTokens.toLocaleString()} tokens (${pct}% ocupado)\n`;
         content += `${C.white}Capacidad Libre Ventana:${C.reset}   ${C.bold}${remaining.toLocaleString()}${C.reset} tokens disponibles\n\n`;
         content += `${C.granateBright}── Métricas de la Sesión (${activeSession?.id || 'sin sesión'}) ──${C.reset}\n`;
         content += `${C.white}• Mensajes en Historial:${C.reset}   ${messages.length} mensajes guardados\n`;
@@ -606,7 +605,7 @@ async function startRepl(initialConfig) {
         content += `${C.white}• Prompt (Entrada):${C.reset}        ${(activeSession?.tokens?.prompt || 0).toLocaleString()} tokens\n`;
         content += `${C.white}• Completion (Salida):${C.reset}    ${(activeSession?.tokens?.completion || 0).toLocaleString()} tokens\n`;
 
-        console.log(box('Métricas de Contexto y Ventana 1M', content, C.granate));
+        console.log(box('Métricas de Contexto', content, C.granate));
         rl.prompt();
         return;
       }
