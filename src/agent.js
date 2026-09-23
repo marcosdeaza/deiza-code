@@ -375,7 +375,7 @@ function argCommand(rawArgs) {
 }
 
 /**
- * Smart conversation context compaction (Claude Code style auto-compaction).
+ * Smart conversation context compaction (automatic, before the window fills up).
  * Compresses historical turns, tool outputs, and discussions into a dense, structured
  * architectural summary, drastically reducing active tokens while preserving full memory.
  */

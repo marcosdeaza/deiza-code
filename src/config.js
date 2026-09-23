@@ -22,7 +22,7 @@ const DEIZA_DIR = path.join(os.homedir(), '.deiza');
 const CONFIG_FILE = path.join(DEIZA_DIR, 'config.json');
 const SESSIONS_DIR = path.join(DEIZA_DIR, 'sessions');
 
-const VERSION = '2.1.2';
+const VERSION = '2.1.3';
 const DEFAULT_DEIZA_API = 'https://deiza.org';
 const DEFAULT_MODEL = 'deiza-liquid';
 
@@ -167,13 +167,6 @@ function loadConfig() {
     } catch {
       fileConfig = {};
     }
-  }
-
-  // Purge any stale legacy endpoints (e.g. bedrock-mantle URL from older testing)
-  if (fileConfig.endpoint && (fileConfig.endpoint.includes('bedrock-mantle') || fileConfig.endpoint.includes('amazonaws.com'))) {
-    delete fileConfig.endpoint;
-    delete fileConfig.endpointModel;
-    needsResave = true;
   }
 
   const accountBase = normalizeUrl(process.env.DEIZA_API_URL || DEFAULT_DEIZA_API);

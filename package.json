@@ -1,6 +1,6 @@
 {
   "name": "deiza-code",
-  "version": "2.1.2",
+  "version": "2.1.3",
   "description": "Autonomous AI coding agent in your terminal. Native Deiza API integration, 1-click browser login, surgical code editing & adaptable to any LLM endpoint.",
   "main": "src/index.js",
   "bin": {

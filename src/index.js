@@ -616,7 +616,7 @@ async function startRepl(initialConfig) {
           rl.prompt();
           return;
         }
-        console.log(`\n  ${C.granateBright}●${C.reset} ${C.white}Compactando memoria de conversación (estilo Claude Code)...${C.reset}`);
+        console.log(`\n  ${C.granateBright}●${C.reset} ${C.white}Compactando la memoria de la conversación...${C.reset}`);
         const comp = compactContext(messages, { force: true });
         if (comp.compacted) {
           if (activeSession) {

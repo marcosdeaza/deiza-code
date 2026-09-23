@@ -29,9 +29,9 @@ Mira a **Deiza Code** analizando el repositorio, realizando preguntas interactiv
 
 ## ✨ ¿Qué es Deiza Code?
 
-**Deiza Code** es un agente agéntico de desarrollo para terminal inspirado en la velocidad, ergonomía y precisión de *Claude Code*.
+**Deiza Code** es un agente de desarrollo para terminal: rápido, ergonómico y preciso.
 
-Impulsado por el modelo **Deiza Omniscient (Deiza Liquid 5.1)** en la infraestructura dedicada de Deiza: diffs quirúrgicos, ejecución autónoma y visión, sin colas de espera. Requiere una cuenta de Deiza con **plan de pago (Friend o Signet)**: la cuota se sincroniza con tu ventana de uso de 5 horas y el login se hace en un clic desde el navegador.
+Impulsado por los modelos de Deiza (**Liquid 5**, **Solid 4.6**, **Gas 4.5** y **Vainilla**) en la infraestructura dedicada de Deiza: diffs quirúrgicos, ejecución autónoma y visión, sin colas de espera. Requiere una cuenta de Deiza (cualquier plan): la cuota se sincroniza con tu ventana de uso de 5 horas y el login se hace en un clic desde el navegador.
 
 ### Dos ediciones, un mismo código
 
@@ -92,7 +92,7 @@ deiza --endpoint deiza
 - **Motor Multi-Agente:** Permite a Deiza Code delegar subtareas (investigación de contexto, auditorías de seguridad, ejecución de suites de test) a subagentes autónomos aislados (`invoke_subagent`).
 - **Visión Multimodal:** Soporte nativo para inspeccionar capturas de pantalla, maquetas y assets de diseño mediante comandos `/image`, `/paste` y la herramienta `view_image`.
 - **Edición Quirúrgica de Código:** Aplica reemplazos exactos mostrando **diffs visuales** en color verde y rojo directamente en la terminal antes y después de modificar archivos.
-- **Motor agéntico al estilo Claude Code (v1.5):**
+- **Motor agéntico (v1.5):**
   - *Function calling nativo*: las herramientas se invocan como funciones reales del motor (con fallback a bloques XML en endpoints que no lo soporten).
   - *Progreso en vivo*: mientras el motor escribe un archivo ves el nombre y el tamaño crecer; cada herramienta muestra su resultado (líneas escritas, salida del comando, diff).
   - *Sin cortes*: si una respuesta o una llamada se corta por el límite de salida, Deiza Code la detecta y pide continuar por partes (`write_file` + `append_file`); si el modelo anuncia una acción sin ejecutarla, se le empuja a hacerlo.
@@ -108,7 +108,7 @@ deiza --endpoint deiza
   - `invoke_subagent`: delegación de subtareas a un worker aislado.
   - `view_image`: análisis visual multimodal de maquetas e interfaces.
 - **Guardas de Seguridad:** en COPILOT se aprueba cada cambio; en cualquier modo los comandos que destruirían el sistema (`rm -rf /`, `mkfs`, `format C:`, apagar la máquina) se rechazan siempre.
-- **Detección Automática de Contexto:** Al arrancar en cualquier proyecto, detecta el branch de Git, archivos modificados, estructura de directorios y directivas (`.deizarules` o `CLAUDE.md`).
+- **Detección Automática de Contexto:** Al arrancar en cualquier proyecto, detecta el branch de Git, archivos modificados, estructura de directorios y directivas del proyecto (`.deizarules`, `AGENTS.md` y similares).
 - **Autenticación en 1 Clic:** levanta un callback loopback local en `127.0.0.1:54321` (o un puerto libre) y abre el navegador para vincular tu cuenta al instante. La sesión se revalida en cada arranque: sin cuenta o con plan Free, Deiza Code no arranca.
 - **Estética Granate Profesional (`#8C2F39`):** Interfaz sobria, minimalista, con tipografía limpia y sin elementos innecesarios.
 
@@ -129,7 +129,7 @@ irm https://deiza.org/install.ps1 | iex
 > Los instaladores de deiza.org distribuyen la **edición Deiza** (solo Deiza Omniscient). Para la edición open, clona este repositorio o instala por npm.
 
 ### 🧠 Neural / AI Agent (Instalación Desatendida)
-Pega este prompt directamente en tu agente de IA (Claude Code, Antigravity, Cursor, etc.):
+Pega este prompt directamente en tu agente de IA (Cursor, Antigravity u otro):
 ```text
 Instala Deiza Code en mi sistema de forma automática ejecutando el script oficial según mi sistema operativo: si es macOS o Linux ejecuta en bash 'curl -fsSL https://deiza.org/install.sh | bash', o si es Windows ejecuta en PowerShell 'irm https://deiza.org/install.ps1 | iex'. Una vez instalado, ejecuta 'deiza --version' para verificar y abre la autenticación con 'deiza --login'.
 ```
@@ -226,7 +226,7 @@ deiza-code/
 │   ├── auth.js           # Servidor loopback OAuth y gestión de API key
 │   ├── ui.js             # Estética granate ANSI, banners y formateadores
 │   ├── config.js         # Persistencia en ~/.deiza/config.json
-│   └── prompt.js         # System prompt de grado Claude Code
+│   └── prompt.js         # System prompt del agente
 ├── assets/
 │   ├── banner.png        # Banner oficial de Deiza Code
 │   └── demo.gif          # Grabación animada de la terminal en acción

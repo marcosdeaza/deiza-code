@@ -385,7 +385,7 @@ const COMMANDS_REGISTRY = [
   { cmd: '/plan', args: '', desc: 'Modo PLAN: análisis y plan de implementación sin tocar archivos', cat: 'Modos' },
   { cmd: '/mode', args: '[build|copilot|plan]', desc: 'Ver o cambiar el modo de permisos activo', cat: 'Modos' },
   { cmd: '/session', args: '[list|new|resume|delete|info]', desc: 'Gestor de sesiones: listar, crear, reanudar, borrar y métricas', cat: 'Sesión' },
-  { cmd: '/compact', args: '', desc: 'Compactar y comprimir memoria de contexto (estilo Claude Code)', cat: 'Sesión' },
+  { cmd: '/compact', args: '', desc: 'Compactar y comprimir la memoria de contexto', cat: 'Sesión' },
   { cmd: '/tokens', args: '', desc: 'Métricas de la ventana de contexto y tokens de la sesión', cat: 'Sesión' },
   { cmd: '/context', args: '', desc: 'Alias de /tokens', cat: 'Sesión' },
   { cmd: '/history', args: '', desc: 'Ver historial de conversaciones y consumo de tokens', cat: 'Conversaciones' },
@@ -525,7 +525,7 @@ function renderSessionInfo(session) {
 }
 
 /**
- * Renders the context compaction results box (Claude Code style)
+ * Renders the context compaction results box
  */
 function renderCompactionCard(beforeTokens, afterTokens, freedPct, limit = 262144) {
   const lim = `${Math.round(limit / 1024)}K`;
@@ -534,11 +534,11 @@ function renderCompactionCard(beforeTokens, afterTokens, freedPct, limit = 26214
   content += `${C.white}Contexto Compactado:  ${C.green}${C.bold}${afterTokens.toLocaleString()}${C.reset} tokens (${((afterTokens / limit) * 100).toFixed(2)}% de ${lim})\n`;
   content += `${C.white}Espacio Recuperado:   ${C.cyan}${C.bold}${freedPct}% de reducción${C.reset} (espacio libre)\n\n`;
   content += `${C.gray}✓ La memoria del proyecto (archivos editados, comandos y decisiones) se preservó intacta.${C.reset}`;
-  return box('Compactación de Contexto (Estilo Claude Code)', content, C.granate);
+  return box('Compactación de Contexto', content, C.granate);
 }
 
 /**
- * Interactive Arrow-Key Session Selector (Claude Code / TUI style)
+ * Interactive arrow-key session selector (TUI)
  */
 function selectSessionInteractive(sessions, activeSessionId) {
   return new Promise((resolve) => {
