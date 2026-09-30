@@ -17,7 +17,7 @@
 
 ---
 
-## 🎬 Demostración en Vivo
+## Demostración en Vivo
 
 Mira a **Deiza Code** analizando el repositorio, realizando preguntas interactivas, aplicando diffs quirúrgicos de código y validando los tests automáticamente:
 
@@ -52,7 +52,7 @@ Ficha completa del personaje: [assets/capu/capu-sheet.png](assets/capu/capu-shee
 - Si la cuota se acaba a mitad de una tarea, Deiza no corta: sigue con un margen de cortesía, lleva el trabajo a un punto estable, hace el guardado o despliegue de emergencia si la tarea lo pedía y escribe `DEIZA_HANDOFF.md` en la raíz del proyecto con el objetivo, el estado, los cambios, lo pendiente y un prompt listo para la siguiente sesión (o para otra IA). Si el agente no llega a escribirlo, el CLI lo genera con lo hecho en la sesión.
 - El contexto ocupado se ve siempre en el prompt: `[48.2k/256K · 18.8%]`, y en detalle con `/context`.
 
-## ✨ ¿Qué es Deiza Code?
+## ¿Qué es Deiza Code?
 
 **Deiza Code** es un agente de desarrollo para terminal: rápido, ergonómico y preciso.
 
@@ -67,11 +67,11 @@ Impulsado por los modelos de Deiza (**Liquid 5.1**, **Solid 5** y **Gas 4.5**) e
 | Otros motores (`--endpoint`, `/endpoint`) | Sí: cualquier servidor OpenAI-compatible (Ollama, vLLM, LM Studio, OpenAI…) | No: funciona en exclusiva con Deiza Omniscient y tu cuota |
 | Build | `node scripts/bundle.js` | `node scripts/bundle.js --flavor closed` |
 
-> 🚀 **Cero Lock-in en la edición open:** el motor está desacoplado para que puedas **reciclar Deiza Code como CLI agéntica con cualquier otro proyecto o endpoint de IA**.
+> **Cero Lock-in en la edición open:** el motor está desacoplado para que puedas **reciclar Deiza Code como CLI agéntica con cualquier otro proyecto o endpoint de IA**.
 
 ---
 
-## 🔄 Reciclaje Universal: Usa Cualquier IA (edición open)
+## Reciclaje Universal: Usa Cualquier IA (edición open)
 
 Deiza Code siempre arranca con tu **cuenta de Deiza** (plan Friend o Signet). En la edición open, una vez dentro puedes cambiar el motor que responde por **cualquier modelo o proveedor** que soporte la especificación estándar OpenAI `/chat/completions`:
 
@@ -139,7 +139,7 @@ deiza --endpoint deiza
 
 ---
 
-## 📦 Instalación Rápida
+## Instalación Rápida
 
 ### En macOS y Linux (Bash)
 ```bash
@@ -153,7 +153,7 @@ irm https://deiza.org/install.ps1 | iex
 
 > Los instaladores de deiza.org distribuyen la **edición Deiza** (solo Deiza Omniscient). Para la edición open, clona este repositorio o instala por npm.
 
-### 🧠 Neural / AI Agent (Instalación Desatendida)
+### Neural / AI Agent (Instalación Desatendida)
 Pega este prompt directamente en tu agente de IA (Cursor, Antigravity u otro):
 ```text
 Instala Deiza Code en mi sistema de forma automática ejecutando el script oficial según mi sistema operativo: si es macOS o Linux ejecuta en bash 'curl -fsSL https://deiza.org/install.sh | bash', o si es Windows ejecuta en PowerShell 'irm https://deiza.org/install.ps1 | iex'. Una vez instalado, ejecuta 'deiza --version' para verificar y abre la autenticación con 'deiza --login'.
@@ -170,9 +170,9 @@ npm install -g deiza-code
 
 ---
 
-## 🕹️ Comandos en la Terminal (REPL)
+## Comandos en la Terminal (REPL)
 
-> 💡 **Paleta Interactiva en Tiempo Real:** Al teclear `/` en la terminal, se despliega instantáneamente la lista de comandos disponibles con búsqueda en vivo. Presiona `Tab` para autocompletar cualquier comando.
+> **Paleta Interactiva en Tiempo Real:** Al teclear `/` en la terminal, se despliega instantáneamente la lista de comandos disponibles con búsqueda en vivo. Presiona `Tab` para autocompletar cualquier comando.
 
 | Comando | Descripción |
 | :--- | :--- |
@@ -202,7 +202,7 @@ npm install -g deiza-code
 
 ---
 
-## 🔐 Autenticación Flexible (Navegador o API Key)
+## Autenticación Flexible (Navegador o API Key)
 
 Deiza Code ofrece dos métodos de conexión integrados para adaptarse a cualquier flujo:
 1. **Navegador Web (Recomendado · 1 Clic):** Abre automáticamente tu navegador para autorizar la terminal de forma instantánea mediante loopback local en `127.0.0.1:54321`.
@@ -210,7 +210,7 @@ Deiza Code ofrece dos métodos de conexión integrados para adaptarse a cualquie
 
 ---
 
-## 🛠️ Opciones de CLI
+## Opciones de CLI
 
 ```text
 Uso:
@@ -235,7 +235,7 @@ Opciones:
 
 ---
 
-## 📂 Estructura del Proyecto
+## Estructura del Proyecto
 
 ```text
 deiza-code/
@@ -266,7 +266,7 @@ deiza-code/
 
 ---
 
-## 📄 Licencia
+## Licencia
 
 Distribuido bajo la Licencia MIT. Consulta [LICENSE](LICENSE) para más detalles.
-Desarrollado con ❤️ para la comunidad de desarrolladores de [Deiza](https://deiza.org).
+Hecho por DeizaLab para la comunidad de desarrolladores de [Deiza](https://deiza.org).
