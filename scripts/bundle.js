@@ -50,6 +50,7 @@ const { exec, spawn, spawnSync, execSync, execFileSync } = require('child_proces
 `;
 
 const uiCode = cleanCode(read('src/ui.js'));
+const mascotCode = cleanCode(read('src/mascot.js'));
 const configCode = cleanCode(read('src/config.js'));
 const sessionCode = cleanCode(read('src/session.js'));
 const clipboardCode = cleanCode(read('src/clipboard.js'));
@@ -67,6 +68,8 @@ const fullBundle = [
   configCode,
   '// ── 2. UI & Terminal Aesthetics ──',
   uiCode,
+  '// ── 2b. Capu, la mascota ──',
+  mascotCode,
   '// ── 3. Session Persistence ──',
   sessionCode,
   '// ── 4. Clipboard & Image Detection ──',

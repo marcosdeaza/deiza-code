@@ -20,7 +20,7 @@ const { VERSION } = require('../src/config');
 const versionInfo = {
   version: VERSION,
   release_date: new Date().toISOString().split('T')[0],
-  notes: `v${VERSION}: Los proyectos (juegos, webs, apps) salen con estructura real de varios archivos en vez de un único archivo largo. Llega Solid 5, el modelo más capaz de Deiza: metódico, para arquitectura, depuración difícil e investigación (/solid). Liquid pasa a la 5.1 y Gas estrena motor, varias veces más rápido. Vainilla se retira: /vainilla y --vainilla abren Gas.`,
+  notes: `v${VERSION}: Llega Capu, la mascota de Deiza Code (/capu). Si te quedas sin uso a mitad de una tarea, Deiza no corta: termina con un margen de cortesía, deja el trabajo estable y escribe DEIZA_HANDOFF.md con el contexto, los cambios y lo pendiente. El uso se mide de forma real (contexto, razonamiento y respuesta) y los reintentos aguantan varios minutos si el motor está muy solicitado.`,
   platforms: {
     darwin: "https://deiza.org/downloads/deiza-code.js",
     linux: "https://deiza.org/downloads/deiza-code.js",

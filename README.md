@@ -27,6 +27,31 @@ Mira a **Deiza Code** analizando el repositorio, realizando preguntas interactiv
 
 ---
 
+## Capu
+
+<p align="center">
+  <img src="assets/capu/capu-animated.svg" alt="Capu, la mascota de Deiza Code, tecleando, tomando café y floreciendo" width="330" />
+</p>
+
+Capu es la mascota de Deiza Code: un capullo de rosa hecho bloque, con el pétalo izquierdo más alto y dos ojos que son huecos. En la terminal te recibe al abrir (y saluda con `/capu`); en la app de escritorio acompaña al agente mientras trabaja: teclea en un portátil lleno de pegatinas, sopla el café, se echa una lata por el hueco de los pétalos, le explica el bug al pato de goma, espera a que compile y florece cuando la tarea termina. Si se acaba el uso, se mustia y se pone a escribir el traspaso.
+
+```
+  ██▄ ▄▄     Deiza Code 2.3.0
+  ████████   Liquid 5.1 · BUILD autónomo
+  ██ ██ ██   ~/proyecto · main
+  ████████   Marcos · Signet · uso 12 %
+  ▀█▀▀▀▀█▀
+```
+
+Ficha completa del personaje: [assets/capu/capu-sheet.png](assets/capu/capu-sheet.png).
+
+## Uso y margen de cortesía
+
+- El uso se mide de verdad: contexto que se envía, razonamiento y respuesta, con descuento para lo que el motor ya tenía en caché. Nada de mensajes que no cuentan ni de conversaciones enteras que suben un 2 %.
+- Ventana de 5 horas más un tope semanal. Friend da para una tarde larga programando; Signet, casi tres veces más.
+- Si la cuota se acaba a mitad de una tarea, Deiza no corta: sigue con un margen de cortesía, lleva el trabajo a un punto estable, hace el guardado o despliegue de emergencia si la tarea lo pedía y escribe `DEIZA_HANDOFF.md` en la raíz del proyecto con el objetivo, el estado, los cambios, lo pendiente y un prompt listo para la siguiente sesión (o para otra IA). Si el agente no llega a escribirlo, el CLI lo genera con lo hecho en la sesión.
+- El contexto ocupado se ve siempre en el prompt: `[48.2k/256K · 18.8%]`, y en detalle con `/context`.
+
 ## ✨ ¿Qué es Deiza Code?
 
 **Deiza Code** es un agente de desarrollo para terminal: rápido, ergonómico y preciso.

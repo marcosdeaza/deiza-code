@@ -5,9 +5,11 @@
 
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const https = require('https');
 const { exec, spawn, spawnSync } = require('child_process');
 const readline = require('readline');
+const { capuBeside, playCapu } = require('./mascot');
 const { C, BANNER, Status, box, COMMANDS_REGISTRY, MODE_INFO, modeBadge, modelBadge, renderModes, renderModelSelector, renderCommandPalette, renderWhoami, renderSessionList, renderSessionInfo, renderCompactionCard, selectSessionInteractive } = require('./ui');
 const { loadConfig, saveConfig, DEFAULT_MODEL, VERSION, MODES, IS_CLOSED, normalizeMode, normalizeModel, normalizeUrl, isDeizaHost, MODEL_INFO, NATIVE_MODELS, contextLimit } = require('./config');
 const { runLoginFlow, ensureAuthenticated, fetchModels, fetchUsage } = require('./auth');
@@ -125,28 +127,26 @@ function fallbackInstaller(resolve, reject) {
   });
 }
 
-function printHeader(cfg, currentMode, models) {
+function printHeader(cfg, currentMode) {
+  // Capu on the left, the session at a glance on the right (replaces the old block banner + box)
   const git = getGitContext();
   const projType = detectProjectType();
-  const branchLabel = git.isGit ? ` · ${C.cyan}⎇ ${git.branch}${C.reset}` : '';
   const usage = cfg.usage;
-  const plan = usage?.plan || cfg.plan || 'pro';
-  const pct = usage && usage.token_limit > 0 ? Math.min(100, Math.round((usage.tokens_used / usage.token_limit) * 100)) : 0;
-  const resetLabel = usage?.reset_in_seconds ? `${Math.ceil(usage.reset_in_seconds / 60)}m` : null;
-
-  const currentModelId = cfg.model || DEFAULT_MODEL;
-  const currentModelInfo = MODEL_INFO[currentModelId];
-  const engineLabel = cfg.isCustomEndpoint
-    ? `${C.gold}Custom ${cfg.apiBase}${C.reset} · ${C.granateBright}${cfg.model}${C.reset}`
-    : `${C.granateBright}${currentModelInfo?.name || currentModelId}${C.reset} ${C.gray}[${currentModelInfo?.badge || 'Nativo'}]${C.reset} ${C.guide}(/model)${C.reset}`;
-
-  let content = '';
-  content += `${C.white}Cuenta:${C.reset}     ${C.bold}${cfg.name ? `${cfg.name} · ` : ''}${cfg.email || 'Conectada'}${C.reset} · ${C.granateBold}[${String(plan).toUpperCase()}]${C.reset} · ${C.gray}Uso:${C.reset} ${pct}%${resetLabel ? ` (${resetLabel} para reiniciar)` : ''}\n`;
-  content += `${C.white}Modelo:${C.reset}     ${engineLabel}\n`;
-  content += `${C.white}Modo:${C.reset}       ${modeBadge(currentMode)} ${C.gray}${(MODE_INFO[currentMode] || MODE_INFO.build).desc}${C.reset}\n`;
-  content += `${C.white}Workspace:${C.reset}  ${C.gray}${process.cwd()}${C.reset} [${projType}]${branchLabel}`;
-
-  console.log(box(`Deiza Code — Entorno de Ejecución v${VERSION}`, content, C.granateBold));
+  const plan = usage?.plan || cfg.plan || '';
+  const pct = usage && usage.token_limit > 0 ? Math.min(100, Math.round(usage.pct != null ? usage.pct : (usage.tokens_used / usage.token_limit) * 100)) : null;
+  const reset = usage?.reset_in_seconds ? (usage.reset_in_seconds >= 3600 ? `${Math.floor(usage.reset_in_seconds / 3600)} h ${Math.round((usage.reset_in_seconds % 3600) / 60)} min` : `${Math.ceil(usage.reset_in_seconds / 60)} min`) : null;
+  const state = usage?.state === 'grace' ? `${C.gold}margen de cortesía${C.reset}` : usage?.state === 'exhausted' ? `${C.gold}sin uso${reset ? ` hasta dentro de ${reset}` : ''}${C.reset}` : null;
+  const mInfo = MODEL_INFO[cfg.model || DEFAULT_MODEL];
+  const engine = cfg.isCustomEndpoint ? `${cfg.model} ${C.darkGray}(${cfg.apiBase})` : (mInfo?.name || cfg.model || DEFAULT_MODEL).replace(/^Deiza /, '');
+  const mode = MODE_INFO[currentMode] || MODE_INFO.build;
+  const who = [cfg.name || cfg.email, plan ? String(plan).replace(/^./, c => c.toUpperCase()) : null,
+    state || (pct !== null ? `uso ${pct} %${reset ? ` · se renueva en ${reset}` : ''}` : null)].filter(Boolean).join(' · ');
+  console.log('\n' + capuBeside([
+    `${C.bold}Deiza Code${C.reset} ${C.darkGray}${VERSION}${C.reset}`,
+    `${C.gray}${engine}${C.reset} ${C.darkGray}·${C.reset} ${mode.color}${mode.label}${C.reset} ${C.darkGray}${mode.desc.split(':')[0].toLowerCase()}${C.reset}`,
+    `${C.darkGray}${process.cwd().replace(os.homedir(), '~')}${git.isGit ? ` · ${git.branch}` : ''}${projType && projType !== 'General Codebase' ? ` · ${projType}` : ''}${C.reset}`,
+    who ? `${C.darkGray}${who}${C.reset}` : '',
+  ]) + '\n');
 }
 
 async function startRepl(initialConfig) {
@@ -154,7 +154,6 @@ async function startRepl(initialConfig) {
   let currentMode = normalizeMode(cfg.mode || cfg.defaultMode);
 
   console.clear();
-  console.log(BANNER);
 
   // Model validation: ensure native models stay on whatever the user set
   if (!cfg.isCustomEndpoint) {
@@ -342,7 +341,8 @@ async function startRepl(initialConfig) {
       } else if (msg === 'PLAN_REQUIRED') {
         console.log(Status.error('Deiza Code requiere un plan de pago activo (Friend o Signet): https://deiza.org/plans'));
       } else if (msg === 'USAGE_LIMIT_EXCEEDED') {
-        console.log(Status.error('Has alcanzado el límite de uso de tu cuota. Consulta /usage para ver cuándo se renueva.'));
+        console.log(Status.error(err.detail || 'Has alcanzado el límite de uso de tu cuota. Consulta /usage para ver cuándo se renueva.'));
+        if (err.handoff && err.handoff.path) console.log(`  ${C.gold}Traspaso guardado en ${path.relative(process.cwd(), err.handoff.path) || err.handoff.path}${C.reset}: pégalo en la siguiente sesión para seguir.\n`);
       } else {
         console.log(Status.error(msg));
       }
@@ -580,6 +580,12 @@ async function startRepl(initialConfig) {
         console.log(`  ${C.white}/session resume <id>${C.reset}       Cargar y reanudar una sesión guardada`);
         console.log(`  ${C.white}/session delete <id>${C.reset}       Borrar una sesión del almacenamiento local`);
         console.log(`  ${C.white}/session info${C.reset}              Ver desglose de tokens de la sesión actual\n`);
+        rl.prompt();
+        return;
+      }
+
+      if (cmd === '/capu') {
+        await playCapu();
         rl.prompt();
         return;
       }
