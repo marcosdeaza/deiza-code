@@ -20,7 +20,7 @@ const { VERSION } = require('../src/config');
 const versionInfo = {
   version: VERSION,
   release_date: new Date().toISOString().split('T')[0],
-  notes: `v${VERSION}: Llega Capu, la mascota de Deiza Code (/capu). Si te quedas sin uso a mitad de una tarea, Deiza no corta: termina con un margen de cortesía, deja el trabajo estable y escribe DEIZA_HANDOFF.md con el contexto, los cambios y lo pendiente. El uso se mide de forma real (contexto, razonamiento y respuesta) y los reintentos aguantan varios minutos si el motor está muy solicitado.`,
+  notes: `v${VERSION}: Deiza Code trabaja con más método: entiende antes de tocar, sigue las convenciones del proyecto, hace exactamente lo que se pide, busca la causa real de los fallos, verifica de verdad y cierra con un resumen breve. Incluye a Capu (/capu), el margen de cortesía con DEIZA_HANDOFF.md y el uso medido de forma real.`,
   platforms: {
     darwin: "https://deiza.org/downloads/deiza-code.js",
     linux: "https://deiza.org/downloads/deiza-code.js",
