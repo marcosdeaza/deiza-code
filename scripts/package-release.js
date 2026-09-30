@@ -20,7 +20,7 @@ const { VERSION } = require('../src/config');
 const versionInfo = {
   version: VERSION,
   release_date: new Date().toISOString().split('T')[0],
-  notes: `v${VERSION}: Si se corta la conexión con el motor (por ejemplo durante una actualización del servidor), Deiza Code reanuda solo en vez de mostrar un error. Las sesiones largas se compactan según la ventana real de cada modelo.`,
+  notes: `v${VERSION}: Los proyectos (juegos, webs, apps) salen con estructura real de varios archivos en vez de un único archivo largo. Llega Solid 5, el modelo más capaz de Deiza: metódico, para arquitectura, depuración difícil e investigación (/solid). Liquid pasa a la 5.1 y Gas estrena motor, varias veces más rápido. Vainilla se retira: /vainilla y --vainilla abren Gas.`,
   platforms: {
     darwin: "https://deiza.org/downloads/deiza-code.js",
     linux: "https://deiza.org/downloads/deiza-code.js",

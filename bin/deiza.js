@@ -40,11 +40,11 @@ Subcomandos:
   deiza compact
 
 Deiza Code funciona con tu cuenta de Deiza (planes Free, Friend o Signet).${IS_CLOSED ? `
-Modelos: Liquid 5 (Equilibrado · 256K tokens), Solid 4.6, Gas 4.5 y Vainilla (ilimitado).` : ''}
+Modelos: Liquid 5.1 (Equilibrado · 256K tokens), Solid 5 (el más capaz) y Gas 4.5 (el más rápido).` : ''}
 Ejemplos:
   deiza
   deiza --solid
-  deiza --vainilla
+  deiza --gas
   deiza --copilot
   deiza -p "añade tests a src/utils.js"${IS_CLOSED ? '' : `
   deiza --endpoint http://localhost:11434 --model llama3`}
@@ -58,7 +58,7 @@ function printTokens(ses, cfg) {
   const remaining = Math.max(0, maxTokens - activeContext);
   const sessionTotal = ses?.tokens?.total || 0;
   const currentModelId = cfg?.model || DEFAULT_MODEL;
-  const currentModelInfo = MODEL_INFO[currentModelId] || { name: 'Deiza Liquid 5', badge: '256K tokens' };
+  const currentModelInfo = MODEL_INFO[currentModelId] || { name: 'Deiza Liquid 5.1', badge: '256K tokens' };
   let content = '';
   content += `${C.white}Motor de Inferencia:${C.reset}     ${C.granateBright}${currentModelInfo.name}${C.reset} ${C.gray}(${currentModelInfo.badge})${C.reset}\n`;
   content += `${C.white}Ventana de Contexto:${C.reset}     ${C.bold}${maxTokens.toLocaleString()}${C.reset} tokens\n`;
@@ -217,7 +217,7 @@ async function main() {
       cfg.model = 'deiza-gas';
       consumed.add(i);
     } else if (a === '--vainilla' || a === '--vanilla') {
-      cfg.model = 'deiza-vainilla';
+      cfg.model = 'deiza-gas';   // Vainilla was retired
       consumed.add(i);
     } else if (a === '--plan' || a === '--copilot' || a === '--build') {
       cfg.mode = a.slice(2);

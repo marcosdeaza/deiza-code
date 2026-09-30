@@ -205,11 +205,9 @@ async function startRepl(initialConfig) {
         '/model liquid',
         '/model solid',
         '/model gas',
-        '/model vainilla',
         '/liquid',
         '/solid',
         '/gas',
-        '/vainilla',
       ];
       const hits = allCmds.filter(c => c.startsWith(line));
       return [hits.length ? hits : allCmds, line];
@@ -344,7 +342,7 @@ async function startRepl(initialConfig) {
       } else if (msg === 'PLAN_REQUIRED') {
         console.log(Status.error('Deiza Code requiere un plan de pago activo (Friend o Signet): https://deiza.org/plans'));
       } else if (msg === 'USAGE_LIMIT_EXCEEDED') {
-        console.log(Status.error('Has alcanzado el límite de uso de tu cuota. Cambia a Deiza Vainilla (/vainilla) para seguir sin límites o consulta /usage.'));
+        console.log(Status.error('Has alcanzado el límite de uso de tu cuota. Consulta /usage para ver cuándo se renueva.'));
       } else {
         console.log(Status.error(msg));
       }
@@ -768,12 +766,11 @@ async function startRepl(initialConfig) {
         return;
       }
 
-      if (cmd === '/model' || cmd === '/models' || cmd === '/liquid' || cmd === '/solid' || cmd === '/gas' || cmd === '/vainilla') {
+      if (cmd === '/model' || cmd === '/models' || cmd === '/liquid' || cmd === '/solid' || cmd === '/gas') {
         let targetArg = parts[1]?.trim();
         if (cmd === '/liquid') targetArg = 'liquid';
         else if (cmd === '/solid') targetArg = 'solid';
         else if (cmd === '/gas') targetArg = 'gas';
-        else if (cmd === '/vainilla') targetArg = 'vainilla';
 
         if (!cfg.isCustomEndpoint) {
           if (!targetArg || targetArg === 'list' || targetArg === 'ls') {

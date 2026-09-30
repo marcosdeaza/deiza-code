@@ -31,7 +31,7 @@ Mira a **Deiza Code** analizando el repositorio, realizando preguntas interactiv
 
 **Deiza Code** es un agente de desarrollo para terminal: rápido, ergonómico y preciso.
 
-Impulsado por los modelos de Deiza (**Liquid 5**, **Solid 4.6**, **Gas 4.5** y **Vainilla**) en la infraestructura dedicada de Deiza: diffs quirúrgicos, ejecución autónoma y visión, sin colas de espera. Requiere una cuenta de Deiza (cualquier plan): la cuota se sincroniza con tu ventana de uso de 5 horas y el login se hace en un clic desde el navegador.
+Impulsado por los modelos de Deiza (**Liquid 5.1**, **Solid 5** y **Gas 4.5**) en la infraestructura dedicada de Deiza: diffs quirúrgicos, ejecución autónoma y visión, sin colas de espera. Requiere una cuenta de Deiza (cualquier plan): la cuota se sincroniza con tu ventana de uso de 5 horas y el login se hace en un clic desde el navegador.
 
 ### Dos ediciones, un mismo código
 
