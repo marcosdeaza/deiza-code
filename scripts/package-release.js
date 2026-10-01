@@ -20,7 +20,7 @@ const { VERSION } = require('../src/config');
 const versionInfo = {
   version: VERSION,
   release_date: new Date().toISOString().split('T')[0],
-  notes: `v${VERSION}: Solid 5 trabaja con su ventana real de 1M de tokens (medida contra el motor): sesiones mucho más largas antes de compactar. Liquid sigue en 256K y Gas en 128K. Incluye la metodología de trabajo más rigurosa, Capu (/capu) y el margen de cortesía con DEIZA_HANDOFF.md.`,
+  notes: `v${VERSION}: Solid 5 pasa a ser el modelo por defecto de Deiza Code: 1M de tokens de contexto para proyectos casi de una sola vez. Las imágenes que mira el agente ya llegan como imagen de verdad (antes iban como texto y llenaban el contexto con decenas de miles de tokens), los resultados de las herramientas ocupan menos y los mensajes de error salen en español.`,
   platforms: {
     darwin: "https://deiza.org/downloads/deiza-code.js",
     linux: "https://deiza.org/downloads/deiza-code.js",
