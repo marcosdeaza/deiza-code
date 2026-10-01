@@ -51,6 +51,7 @@ Ficha completa del personaje: [assets/capu/capu-sheet.png](assets/capu/capu-shee
 - Ventana de 5 horas más un tope semanal. Friend da para una tarde larga programando; Signet, casi tres veces más.
 - Si la cuota se acaba a mitad de una tarea, Deiza no corta: sigue con un margen de cortesía, lleva el trabajo a un punto estable, hace el guardado o despliegue de emergencia si la tarea lo pedía y escribe `DEIZA_HANDOFF.md` en la raíz del proyecto con el objetivo, el estado, los cambios, lo pendiente y un prompt listo para la siguiente sesión (o para otra IA). Si el agente no llega a escribirlo, el CLI lo genera con lo hecho en la sesión.
 - El contexto ocupado se ve siempre en el prompt: `[48.2k/256K · 18.8%]`, y en detalle con `/context`.
+- Ventanas de contexto reales, medidas contra cada motor: Solid 5 1M de tokens, Liquid 5.1 256K y Gas 4.5 128K. Deiza compacta sola al 70 % (y con `/compact` cuando quieras).
 
 ## ¿Qué es Deiza Code?
 

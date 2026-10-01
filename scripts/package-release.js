@@ -20,7 +20,7 @@ const { VERSION } = require('../src/config');
 const versionInfo = {
   version: VERSION,
   release_date: new Date().toISOString().split('T')[0],
-  notes: `v${VERSION}: Deiza Code trabaja con más método: entiende antes de tocar, sigue las convenciones del proyecto, hace exactamente lo que se pide, busca la causa real de los fallos, verifica de verdad y cierra con un resumen breve. Incluye a Capu (/capu), el margen de cortesía con DEIZA_HANDOFF.md y el uso medido de forma real.`,
+  notes: `v${VERSION}: Solid 5 trabaja con su ventana real de 1M de tokens (medida contra el motor): sesiones mucho más largas antes de compactar. Liquid sigue en 256K y Gas en 128K. Incluye la metodología de trabajo más rigurosa, Capu (/capu) y el margen de cortesía con DEIZA_HANDOFF.md.`,
   platforms: {
     darwin: "https://deiza.org/downloads/deiza-code.js",
     linux: "https://deiza.org/downloads/deiza-code.js",
