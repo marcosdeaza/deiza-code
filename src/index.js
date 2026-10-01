@@ -18,6 +18,8 @@ const { Tools } = require('./tools');
 const { getGitContext, detectProjectType } = require('./context');
 const { createSession, saveSession, loadSession, loadSessionAsync, listSessions, listSessionsWithCloud, getLatestSession, updateSessionTitleFromPrompt, deleteSession, addSessionTokens, getActiveContextTokens, configureCloudSync } = require('./session');
 const { detectImageInText, getClipboardImage } = require('./clipboard');
+const { parseAttachmentPaths, prepareCliAttachments, cliAttachmentImages } = require('./attachments');
+const { requestComputerBridge } = require('./computer-bridge');
 
 const UPDATE_BASE = 'https://deiza.org/downloads';
 
@@ -310,19 +312,27 @@ async function startRepl(initialConfig) {
 
   // Runs one agent request with the terminal in "busy" state. Esc / Ctrl+C interrupt it.
   let abortCtl = null;
+  let pendingAttachments = [];
   const runTurn = async (input, images = []) => {
+    const attachments = pendingAttachments;
+    let attachmentImages;
+    try { attachmentImages = cliAttachmentImages(attachments); }
+    catch (err) { console.log(Status.error(err.message)); return; }
+    if (images.length + attachmentImages.length > 6) { console.log(Status.error('Adjunta como máximo 6 imágenes por mensaje. Usa /attachments clear para retirar adjuntos.')); return; }
     busy = true;
     abortCtl = new AbortController();
+    pendingAttachments = [];
     try {
       const turnResult = await runAgentTurn({
-        cfg,
+        cfg: { ...cfg, computerSessionId: `cli_${activeSession.id}` },
         messages,
         userInput: input,
         confirmCallback: confirmAction,
         mode: currentMode,
-        images,
+        images: [...images, ...attachmentImages],
+        attachments,
         signal: abortCtl.signal,
-        onToolModeChange: () => saveConfig(cfg),
+        onToolModeChange: (toolMode) => { cfg.toolMode = toolMode; saveConfig(cfg); },
       });
       updateSessionTitleFromPrompt(activeSession, input);
       activeSession.messages = messages;
@@ -348,6 +358,7 @@ async function startRepl(initialConfig) {
       }
       // Drop the dangling user message so a retry does not duplicate it
       if (msg !== 'ABORTED' && messages.length && messages[messages.length - 1].role === 'user') messages.pop();
+      if (msg !== 'ABORTED') pendingAttachments = attachments;
     } finally {
       busy = false;
       abortCtl = null;
@@ -751,6 +762,37 @@ async function startRepl(initialConfig) {
         return;
       }
 
+      if (cmd === '/attach' || cmd === '/attachments') {
+        const argument = input.slice(parts[0].length).trim();
+        if (cmd === '/attachments' && argument === 'clear') {
+          pendingAttachments = [];
+          console.log(`  ${C.gray}Adjuntos retirados de la próxima petición.${C.reset}`);
+        } else if (!argument) {
+          if (pendingAttachments.length) for (const a of pendingAttachments) console.log(`  ${C.gray}› [${a.kind}]${C.reset} ${a.name}${a.kind === 'archive' ? ` · ${a.entries.length} entradas` : ''}`);
+          else console.log(`  ${C.gray}Uso: /attach "ruta al archivo" "ruta a carpeta o ZIP". Se añaden a tu siguiente petición.${C.reset}`);
+        } else {
+          try {
+            const parsed = parseAttachmentPaths(argument, { all: true });
+            if (pendingAttachments.length + parsed.paths.length > 24) throw new Error('Adjunta como máximo 24 archivos o carpetas por petición.');
+            const prepared = await prepareCliAttachments(parsed.paths, activeSession.id);
+            pendingAttachments.push(...prepared.attachments);
+            for (const a of prepared.attachments) console.log(`  ${C.gray}› [adjunto ${a.kind}]${C.reset} ${a.name}${a.kind === 'archive' ? ` · ${a.entries.length} entradas` : ''}`);
+            for (const error of prepared.errors) console.log(Status.error(error));
+          } catch (err) { console.log(Status.error(err.message)); }
+        }
+        rl.prompt();
+        return;
+      }
+
+      if (cmd === '/computer' || cmd === '/browser') {
+        try {
+          await requestComputerBridge('/state');
+          console.log(`  ${C.gray}Deiza está conectado. Pide abrir una web, probar tu app o controlar una ventana.${C.reset}`);
+        } catch (err) { console.log(Status.error(err.message)); }
+        rl.prompt();
+        return;
+      }
+
       if (cmd === '/image') {
         const imagePath = parts[1];
         if (!imagePath) {
@@ -903,10 +945,25 @@ async function startRepl(initialConfig) {
       return;
     }
 
-    // Image path or tag pasted or dragged into the terminal
-    const imgDetection = detectImageInText(input);
+    // User-pasted file/folder paths are explicit attachments; their contents are never executed.
+    let attachedInput = input;
+    try {
+      const parsed = parseAttachmentPaths(input);
+      if (parsed.paths.length) {
+        if (pendingAttachments.length + parsed.paths.length > 24) throw new Error('Adjunta como máximo 24 archivos o carpetas por petición.');
+        const prepared = await prepareCliAttachments(parsed.paths, activeSession.id);
+        pendingAttachments.push(...prepared.attachments);
+        for (const a of prepared.attachments) console.log(`  ${C.gray}› [adjunto ${a.kind}]${C.reset} ${a.name}${a.kind === 'archive' ? ` · ${a.entries.length} entradas` : ''}`);
+        for (const error of prepared.errors) console.log(Status.error(error));
+        if (prepared.errors.length) { rl.prompt(); return; }
+        attachedInput = parsed.promptText;
+        if (!attachedInput) { console.log(`  ${C.gray}Adjuntos preparados. Escribe lo que quieres hacer con ellos.${C.reset}`); rl.prompt(); return; }
+      }
+    } catch (err) { console.log(Status.error(err.message)); rl.prompt(); return; }
+    // Preserve explicit image tags and clipboard capture commands.
+    const imgDetection = detectImageInText(attachedInput);
     const runImages = [];
-    let effectiveInput = input;
+    let effectiveInput = attachedInput;
     if (imgDetection.hasImage) {
       console.log(`  ${C.cyan}› [image]:${C.reset} ${imgDetection.imagePath}${imgDetection.fromClipboard ? ` ${C.gray}(portapapeles)${C.reset}` : ''}`);
       runImages.push({

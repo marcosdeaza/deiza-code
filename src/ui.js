@@ -391,6 +391,10 @@ const COMMANDS_REGISTRY = [
   { cmd: '/new', args: '[título]', desc: 'Iniciar una nueva conversación limpia en este workspace', cat: 'Conversaciones' },
   { cmd: '/paste', args: '', desc: 'Pegar captura del portapapeles (Win+Shift+S / PrtScn / Cmd+Shift+4)', cat: 'Herramientas' },
   { cmd: '/image', args: '<ruta> [inst]', desc: 'Analizar capturas o maquetas con visión multimodal', cat: 'Herramientas' },
+  { cmd: '/attach', args: '<rutas>', desc: 'Adjuntar archivos, carpetas, ZIP e imágenes a la siguiente petición', cat: 'Herramientas' },
+  { cmd: '/attachments', args: '[clear]', desc: 'Ver o retirar los adjuntos preparados', cat: 'Herramientas' },
+  { cmd: '/computer', args: '', desc: 'Comprobar la conexión con el navegador y control del equipo de Deiza', cat: 'Herramientas' },
+  { cmd: '/browser', args: '', desc: 'Alias de /computer', cat: 'Herramientas' },
   { cmd: '/agent', args: '<rol> <tarea>', desc: 'Lanzar un subagente worker aislado (ej: Auditor, Tester)', cat: 'Agentes' },
   { cmd: '/whoami', args: '', desc: 'Ver tu cuenta, plan, tokens y cuota activa', cat: 'Cuenta' },
   { cmd: '/usage', args: '', desc: 'Consultar consumo de tokens y ventana de 5 horas', cat: 'Cuenta' },
@@ -689,5 +693,4 @@ module.exports = {
   renderCompactionCard,
   selectSessionInteractive,
 };
-
 

@@ -55,6 +55,10 @@ const configCode = cleanCode(read('src/config.js'));
 const sessionCode = cleanCode(read('src/session.js'));
 const clipboardCode = cleanCode(read('src/clipboard.js'));
 const contextCode = cleanCode(read('src/context.js'));
+const computerToolsCode = cleanCode(read('src/computer-tools.js'));
+const computerBridgeCode = cleanCode(read('src/computer-bridge.js'));
+const attachmentStoreCode = cleanCode(read('src/attachment-store.js'));
+const attachmentsCode = cleanCode(read('src/attachments.js'));
 const toolsCode = cleanCode(read('src/tools.js'));
 const promptCode = cleanCode(read('src/prompt.js'));
 const agentCode = cleanCode(read('src/agent.js'));
@@ -76,6 +80,13 @@ const fullBundle = [
   clipboardCode,
   '// ── 5. Workspace Context ──',
   contextCode,
+  '// ── 5b. Browser and Computer Tool Contracts ──',
+  computerToolsCode,
+  '// ── 5c. Local Desktop App Bridge ──',
+  computerBridgeCode,
+  '// ── 5d. User Attachments and Safe ZIP Extraction ──',
+  attachmentStoreCode,
+  attachmentsCode,
   '// ── 6. Execution Tools ──',
   toolsCode,
   '// ── 7. System Prompt ──',

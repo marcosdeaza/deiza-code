@@ -54,6 +54,21 @@ Ficha completa del personaje: [assets/capu/capu-sheet.png](assets/capu/capu-shee
 - Solid 5 es el modelo por defecto: con 1M de tokens de contexto ve el proyecto entero y saca aplicaciones completas casi de una sola vez.
 - Ventanas de contexto reales, medidas contra cada motor: Solid 5 1M de tokens, Liquid 5.1 256K y Gas 4.5 128K. Deiza compacta sola al 70 % (y con `/compact` cuando quieras).
 
+## Navegador, control del equipo y adjuntos
+
+Con la app de **Deiza abierta en el mismo equipo**, Code de la terminal puede abrir páginas, leer sus elementos, hacer capturas, clicar, escribir y desplazarse. Sirve para probar las webs que crea y trabajar en correo o Teams web con tu sesión iniciada manualmente. `/computer` comprueba la conexión. El enlace es local, autenticado y no necesita dependencias del navegador en el CLI.
+
+El control de aplicaciones instaladas se habilita en Deiza y requiere los permisos del sistema. Solid y Liquid pueden inspeccionar capturas y controlar ventanas; Gas utiliza el texto y los elementos del navegador. En Plan se permite leer y capturar; en Copilot apruebas las interacciones. Leer correo o Teams no autoriza enviar mensajes, borrar datos o grabar llamadas. Las tareas se realizan durante el turno: no hay vigilancia permanente en segundo plano.
+
+Para adjuntar cualquier archivo, carpeta, ZIP o imagen, arrastra o pega su ruta en la terminal, o escribe:
+
+```text
+/attach "ruta al documento.pdf" "ruta a carpeta" "proyecto.zip"
+Revisa estos archivos y explica qué falta.
+```
+
+`/attachments` muestra los adjuntos pendientes y `/attachments clear` los retira. Las imágenes se envían al modelo visual; los otros archivos se consultan por su ruta. Los ZIP se extraen en una carpeta privada, con límites de tamaño, comprobación de integridad y bloqueo de rutas que salgan de ella o contengan enlaces. No se ejecuta su contenido. Máximo 24 adjuntos, 64 MB por archivo y 6 imágenes de hasta 8 MB por petición.
+
 ## ¿Qué es Deiza Code?
 
 **Deiza Code** es un agente de desarrollo para terminal: rápido, ergonómico y preciso.
