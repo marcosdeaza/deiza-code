@@ -17,7 +17,7 @@ const http = require('http');
 const https = require('https');
 const path = require('path');
 const { StringDecoder } = require('string_decoder');
-const { Tools, TOOL_DEFINITIONS, MAX_TOOL_OUTPUT, isCommandRisky, isCommandCatastrophic, previewChange } = require('./tools');
+const { Tools, TOOL_DEFINITIONS, MAX_TOOL_OUTPUT, isCommandRisky, isCommandCatastrophic, previewChange, setSearchAuth } = require('./tools');
 const { Status, C, createLiveLine, createSpinner, formatBytes, formatDuration, createMarkdownStream, printToolCard } = require('./ui');
 const { buildSystemPrompt } = require('./prompt');
 const { isDeizaHost, contextLimit } = require('./config');
@@ -53,7 +53,7 @@ function validateArgs(name, args) {
 }
 
 const TOOL_SPECS = AGENT_TOOL_DEFINITIONS.map(t => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters } }));
-const MUTATING_TOOLS = new Set(['edit_file', 'write_file', 'append_file', 'run_command', 'delete_path', 'move_path', ...COMPUTER_MUTATING]);
+const MUTATING_TOOLS = new Set(['edit_file', 'write_file', 'append_file', 'run_command', 'delete_path', 'move_path', 'download_file', ...COMPUTER_MUTATING]);
 
 /**
  * Parses XML-style tool calls from LLM output (fallback mode).
@@ -533,10 +533,12 @@ const TOOL_VERB = {
   write_file: '+ [write]', append_file: '+ [append]', edit_file: '~ [edit]', read_file: '› [read]', list_dir: '› [list]',
   search_files: '› [search]', run_command: '$ [bash]', delete_path: '- [delete]', move_path: '→ [move]', fetch_url: '› [fetch]',
   update_plan: '* [plan]', invoke_subagent: '› [agent]', view_image: '› [image]',
+  web_search: '› [web]', image_search: '› [fotos]', download_file: '+ [download]',
 };
 const TOOL_COLOR = {
   write_file: C.green, append_file: C.green, edit_file: C.blue, read_file: C.cyan, list_dir: C.gray, search_files: C.gray,
   run_command: C.gold, delete_path: C.red, move_path: C.gold, fetch_url: C.cyan, update_plan: C.gold, invoke_subagent: C.rose, view_image: C.cyan,
+  web_search: C.cyan, image_search: C.cyan, download_file: C.green,
 };
 
 function toolLabel(call) {
@@ -553,6 +555,8 @@ function toolLabel(call) {
     case 'delete_path': return Status.deleting(a.path);
     case 'move_path': return Status.moving(a.from, a.to);
     case 'fetch_url': return Status.fetching(a.url);
+    case 'web_search': case 'image_search': return `  ${C.cyan}${TOOL_VERB[call.name]}${C.reset} ${C.gray}${a.query || ''}${C.reset}`;
+    case 'download_file': return `  ${C.green}${TOOL_VERB.download_file}${C.reset} ${C.gray}${a.path || ''}${C.reset}`;
     case 'update_plan': return Status.planning();
     case 'invoke_subagent': return Status.subagent(a.role || 'Worker', a.task);
     case 'view_image': return Status.vision(a.path);
@@ -649,6 +653,23 @@ function buildToolCardData(call, result, tookMs) {
       }
       break;
     }
+    case 'web_search':
+    case 'image_search': {
+      target = a.query || '';
+      if (result?.error) { lines = [String(result.error).slice(0, 200)]; status = '✖ error'; }
+      else {
+        const n = (result?.results || []).length;
+        lines = [name === 'image_search' ? `${n} fotos encontradas` : `${n} resultados`];
+        status = n ? '✓ completado' : '✖ sin resultados';
+      }
+      break;
+    }
+    case 'download_file': {
+      target = a.path || '';
+      if (result?.error) { lines = [String(result.error).slice(0, 200)]; status = '✖ error'; }
+      else { lines = [`${formatBytes(result?.bytes || 0)} · ${result?.content_type || ''}`]; status = '✓ descargado'; }
+      break;
+    }
     case 'invoke_subagent': {
       target = `[${a.role || 'Worker'}] ${a.task || ''}`;
       if (result?.error) { lines = [String(result.error).slice(0, 200)]; status = '✖ error'; }
@@ -692,6 +713,9 @@ function toolResultSummary(name, result) {
     case 'list_dir': return dim(`${result.total_items ?? 0} elementos`);
     case 'search_files': return dim(`${result.matches_count ?? 0} coincidencias`);
     case 'fetch_url': return dim(`HTTP ${result.status} · ${formatBytes((result.content || '').length)}${result.truncated ? ' (truncado)' : ''}`);
+    case 'web_search': return dim(`${(result.results || []).length} resultados`);
+    case 'image_search': return dim(`${(result.results || []).length} fotos encontradas`);
+    case 'download_file': return dim(`${formatBytes(result.bytes || 0)} · ${result.content_type || ''}`);
     case 'delete_path': case 'move_path': return dim(result.status || 'ok');
     case 'update_plan': return '';
     case 'invoke_subagent': return dim(`informe de ${formatBytes((result.report || '').length)}`);
@@ -726,6 +750,7 @@ function looksUnfinished(text) {
  *   mode = 'plan'    -> read-only, mutations are simulated
  */
 async function runAgentTurn({ cfg, messages, userInput, confirmCallback, mode = 'build', images = [], attachments = [], quiet = false, signal, onToolModeChange }) {
+  setSearchAuth({ base: cfg.accountBase, apiKey: cfg.apiKey });
   let toolMode = cfg.toolMode === 'xml' ? 'xml' : 'native';
   const startedAt = Date.now();
   const stats = { tools: 0, files: new Set(), commands: 0, prompt: 0, completion: 0, turns: 0, cmds: [] };
@@ -1019,7 +1044,7 @@ async function runAgentTurn({ cfg, messages, userInput, confirmCallback, mode = 
       const t0 = Date.now();
       let toolResult;
       let toolTimer = null;
-      if (computer || ['run_command', 'fetch_url', 'invoke_subagent'].includes(call.name)) {
+      if (computer || ['run_command', 'fetch_url', 'web_search', 'image_search', 'download_file', 'invoke_subagent'].includes(call.name)) {
         toolTimer = setInterval(() => {
           const el = formatDuration(Date.now() - t0);
           live.set(`  ${C.guide}│${C.reset}  ${C.gold}⠋ ejecutando...${C.reset} ${C.white}${call.args?.command || call.name}${C.reset} ${C.darkGray}· ${el}${C.reset}`);

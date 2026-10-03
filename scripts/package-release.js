@@ -20,7 +20,7 @@ const { VERSION } = require('../src/config');
 const versionInfo = {
   version: VERSION,
   release_date: new Date().toISOString().split('T')[0],
-  notes: `v${VERSION}: Solid 5 pasa a ser el modelo por defecto de Deiza Code: 1M de tokens de contexto para proyectos casi de una sola vez. Las imágenes que mira el agente ya llegan como imagen de verdad (antes iban como texto y llenaban el contexto con decenas de miles de tokens), los resultados de las herramientas ocupan menos y los mensajes de error salen en español.`,
+  notes: `v${VERSION}: Deiza Code busca en internet: web_search para documentación y datos actuales, image_search para fotos reales verificadas y download_file para guardarlas en el proyecto (adiós a las URLs inventadas). El control del navegador y del escritorio es mucho más rápido: cada acción devuelve la captura, se pueden encadenar clics y arrastrar piezas, y las capturas pesan menos.`,
   platforms: {
     darwin: "https://deiza.org/downloads/deiza-code.js",
     linux: "https://deiza.org/downloads/deiza-code.js",
