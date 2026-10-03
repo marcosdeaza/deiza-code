@@ -14,7 +14,16 @@ C_RESET='\033[0m'
 printf "\n%bDEIZA CODE%b — Autonomous Terminal Coding Agent\n" "${C_GRANATE}${C_BOLD}" "${C_RESET}"
 printf "%bIniciando instalación en tu sistema...%b\n\n" "${C_GRAY}" "${C_RESET}"
 
-# 1. Comprobar Node.js
+# sudo sin pedir contraseña cuando se puede (el Linux de los Chromebook lo trae así).
+ROOT_CMD=""
+if [ "$(id -u)" -ne 0 ] && command -v sudo >/dev/null 2>&1; then ROOT_CMD="sudo"; fi
+
+# 1. Comprobar Node.js. En Debian/Ubuntu (y Chromebook) se instala con apt si falta.
+if ! command -v node >/dev/null 2>&1 && command -v apt-get >/dev/null 2>&1 && { [ "$(id -u)" -eq 0 ] || [ -n "$ROOT_CMD" ]; }; then
+  printf "  %b●%b Node.js no está instalado. Instalándolo con apt (puede pedir tu contraseña)...\n" "${C_GRANATE}" "${C_RESET}"
+  $ROOT_CMD apt-get update -q >/dev/null || true
+  $ROOT_CMD env DEBIAN_FRONTEND=noninteractive apt-get install -y -q nodejs >/dev/null || true
+fi
 if ! command -v node >/dev/null 2>&1; then
   printf "%b✖ Error:%b Node.js (>= 18) no encontrado.\n" "${C_ROSE}" "${C_RESET}"
   printf "Instálalo desde https://nodejs.org antes de continuar.\n\n"
@@ -31,7 +40,7 @@ TARGET_DIR="/usr/local/bin"
 SUDO=""
 
 if [ ! -w "$TARGET_DIR" ]; then
-  if command -v sudo >/dev/null 2>&1 && [ -t 0 ]; then
+  if command -v sudo >/dev/null 2>&1 && { [ -t 0 ] || sudo -n true 2>/dev/null; }; then
     SUDO="sudo"
   else
     TARGET_DIR="$HOME/.local/bin"
