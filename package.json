@@ -4,7 +4,7 @@
   "description": "Autonomous AI coding agent in your terminal. Native Deiza API integration, 1-click browser login, surgical code editing & adaptable to any LLM endpoint.",
   "main": "src/index.js",
   "scripts": {
-    "test": "node test/compaction.test.js && node test/follow_through.test.js && node test/attachments.test.js && node test/computer.test.js"
+    "test": "node test/compaction.test.js && node test/follow_through.test.js && node test/attachments.test.js && node test/computer.test.js && node test/interruption_continuation.test.js"
   },
   "bin": {
     "deiza": "./bin/deiza.js",

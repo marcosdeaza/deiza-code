@@ -13,7 +13,7 @@ const { capuBeside, playCapu } = require('./mascot');
 const { C, BANNER, Status, box, COMMANDS_REGISTRY, MODE_INFO, modeBadge, modelBadge, renderModes, renderModelSelector, renderCommandPalette, renderWhoami, renderSessionList, renderSessionInfo, renderCompactionCard, selectSessionInteractive } = require('./ui');
 const { loadConfig, saveConfig, DEFAULT_MODEL, VERSION, MODES, IS_CLOSED, normalizeMode, normalizeModel, normalizeUrl, isDeizaHost, MODEL_INFO, NATIVE_MODELS, contextLimit } = require('./config');
 const { runLoginFlow, ensureAuthenticated, fetchModels, fetchUsage } = require('./auth');
-const { runAgentTurn, streamCompletion, compactContext } = require('./agent');
+const { runAgentTurn, streamCompletion, compactContext, sanitizeHistory } = require('./agent');
 const { Tools } = require('./tools');
 const { getGitContext, detectProjectType } = require('./context');
 const { createSession, saveSession, loadSession, loadSessionAsync, listSessions, listSessionsWithCloud, getLatestSession, updateSessionTitleFromPrompt, deleteSession, addSessionTokens, getActiveContextTokens, configureCloudSync } = require('./session');
@@ -343,6 +343,12 @@ async function startRepl(initialConfig) {
       const msg = err?.message || String(err);
       if (msg === 'ABORTED') {
         console.log(`\n  ${C.gold}■ Petición interrumpida.${C.reset}\n`);
+        sanitizeHistory(messages);
+        if (messages.length && messages[messages.length - 1].role === 'user') {
+          messages.push({ role: 'assistant', content: 'Petición interrumpida por el usuario antes de procesar.' });
+        } else if (messages.length && messages[messages.length - 1].role === 'tool') {
+          messages.push({ role: 'assistant', content: 'Acciones interrumpidas por el usuario.' });
+        }
         activeSession.messages = messages;
         saveSession(activeSession);
       } else if (msg === 'AUTH_EXPIRED') {
