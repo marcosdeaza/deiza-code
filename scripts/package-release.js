@@ -20,7 +20,7 @@ const { VERSION } = require('../src/config');
 const versionInfo = {
   version: VERSION,
   release_date: new Date().toISOString().split('T')[0],
-  notes: `v${VERSION}: Deiza Code busca en internet: web_search para documentación y datos actuales, image_search para fotos reales verificadas y download_file para guardarlas en el proyecto (adiós a las URLs inventadas). El control del navegador y del escritorio es mucho más rápido: cada acción devuelve la captura, se pueden encadenar clics y arrastrar piezas, y las capturas pesan menos.`,
+  notes: `v${VERSION}: /whoami enseña el modelo real (Solid 5 por defecto) y cuándo se reinicia entera tu semana; textos al día (sin el antiguo «Deiza Omniscient»). Deiza Code se usa con los planes Friend y Signet.`,
   platforms: {
     darwin: "https://deiza.org/downloads/deiza-code.js",
     linux: "https://deiza.org/downloads/deiza-code.js",

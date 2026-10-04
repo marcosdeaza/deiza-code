@@ -462,7 +462,7 @@ async function startRepl(initialConfig) {
         const currentUsage = await fetchUsage(cfg.apiKey, cfg.accountBase);
         console.log(renderWhoami({
           email: cfg.email, name: cfg.name, plan: currentUsage?.plan || cfg.plan, apiKey: cfg.apiKey,
-          apiBase: cfg.apiBase, isCustom: cfg.isCustomEndpoint, usage: currentUsage, currentMode,
+          apiBase: cfg.apiBase, isCustom: cfg.isCustomEndpoint, usage: currentUsage, currentMode, model: cfg.model,
         }));
         rl.prompt();
         return;
@@ -1058,7 +1058,7 @@ async function startRepl(initialConfig) {
   });
 
   function closedOnlyNotice() {
-    console.log(`\n  ${C.gold}Esta edición de Deiza Code funciona en exclusiva con ${C.bold}Deiza Omniscient${C.reset}${C.gold} y tu cuenta de Deiza.${C.reset}`);
+    console.log(`\n  ${C.gold}Esta edición de Deiza Code funciona en exclusiva con ${C.bold}los modelos de Deiza${C.reset}${C.gold} (Solid 5, Liquid 5.1 y Gas 4.5) y tu cuenta de Deiza.${C.reset}`);
     console.log(`  ${C.gray}La edición open source con soporte de otros motores está en github.com/marcosdeaza/deiza-code${C.reset}\n`);
   }
 
