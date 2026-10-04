@@ -17,7 +17,7 @@ const TASK_COMPLETION_REVIEW_SPEC = {
   },
 };
 
-const completionNormalize = text => String(text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+const completionNormalize = text => String(text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/^[¿¡\s]+/, '').toLowerCase();
 const completionClip = (text, limit) => {
   const value = String(text || '');
   if (value.length <= limit) return value;
@@ -25,9 +25,9 @@ const completionClip = (text, limit) => {
 };
 
 function completionActionRequest(request) {
-  const text = completionNormalize(request).trim();
+  const text = completionNormalize(request).replace(/^[¿¡\s]+/, '').trim();
   if (/^(?:que (?:es|significa|hace)|cual(?:es)?\b|por que\b|como (?:funciona|puedo|se|hacer|usar|configurar)|what (?:is|are|does|do)|why\b|how (?:does|do|can|to)|explica(?:me)?\b|explain\b|describe(?:me)?\b|puedes explicarme\b|can you explain\b)/.test(text)) return false;
-  return /\b(?:implement[a-z]*|arregl[a-z]*|corrig[a-z]*|correg[a-z]*|fix|repair|audit[a-z]*|revis[a-z]*|review|refactor[a-z]*|deploy|desplieg[a-z]*|despleg[a-z]*|public[a-z]*|publish|build|crea[a-z]*|haz|make|test|prueb[a-z]*|comprueb[a-z]*|verific[a-z]*|lee|read|abre|abrir|open|busca[a-z]*|search|instal[a-z]*|install|actualiz[a-z]*|update|elimin[a-z]*|delete|mira[a-z]*|analiz[a-z]*|analyze)\b/.test(text);
+  return /\b(?:implement[a-z]*|arregl[a-z]*|corrig[a-z]*|correg[a-z]*|fix|repair|audit[a-z]*|revis[a-z]*|review|refactor[a-z]*|deploy|desplieg[a-z]*|despleg[a-z]*|public[a-z]*|publish|build|crea[a-z]*|haz|make|test|prueb[a-z]*|comprueb[a-z]*|verific[a-z]*|lee|read|abre|abrir|open|busca[a-z]*|search|instal[a-z]*|install|actualiz[a-z]*|update|elimin[a-z]*|delete|mira[a-z]*|analiz[a-z]*|analyze|cambi[a-z]*|change\b|anad[a-z]*|add\b|segu[a-z]*|sigue\b|continu[a-z]*|continue\b)\b/.test(text);
 }
 
 function completionOnlyPlan(request, mode) {
@@ -39,10 +39,11 @@ function completionOnlyPlan(request, mode) {
 
 function hasUnfinishedPromise(text) {
   const value = completionNormalize(completionClip(text, 8000));
-  const action = '(?:implementar|corregir|arreglar|crear|editar|modificar|ejecutar|probar|verificar|desplegar|publicar|continuar|revisar|auditar|instalar|comprobar|implement|fix|repair|create|edit|run|test|verify|deploy|publish|continue|review|audit|install)';
+  const action = '(?:implement[a-z]*|correg[a-z]*|corrig[a-z]*|arregl[a-z]*|crea[a-z]*|edit[a-z]*|modific[a-z]*|ejecut[a-z]*|prob[a-z]*|prueb[a-z]*|verific[a-z]*|despleg[a-z]*|desplieg[a-z]*|public[a-z]*|continu[a-z]*|revis[a-z]*|audit[a-z]*|instal[a-z]*|comprob[a-z]*|comprueb[a-z]*|cambi[a-z]*|fix[a-z]*|repair[a-z]*|run|test|verify|deploy|publish|continue|review|audit|install)';
   return new RegExp(`\\b(?:voy|vamos)\\s+a\\s+${action}\\b`).test(value)
     || new RegExp(`\\b(?:i(?:'ll| will)|we(?:'ll| will)|let me|i am going to)\\b[^\\n]{0,100}\\b${action}\\b`).test(value)
     || new RegExp(`\\b(?:falta|faltan|queda|quedan|pendiente|pendientes|remaining|still need)\\b[^\\n]{0,100}\\b${action}\\b`).test(value)
+    || new RegExp(`(?:^|\\n)(?:ahora|a continuacion|seguidamente|procedo|next|now)\\b[^\\n]{0,40}\\b${action}\\b`, 'i').test(value)
     || /(?:^|\n)(?:ahora|a continuacion|seguidamente|procedo|voy a|next|now)\b[^\n]*[:：]\s*$/.test(value);
 }
 
@@ -67,6 +68,9 @@ function parseCompletionReview(result) {
 }
 
 function completionToolFailed(name, result) {
+  if (typeof result === 'string') {
+    return /^(?:error\b|\[plan mode\]|el usuario ha rechazado|comando bloqueado)/i.test(result.trim());
+  }
   if (!result || typeof result !== 'object') return false;
   return Boolean(result.error || result.blocked || result.aborted || result.killed_by_timeout || result.timed_out
     || name === 'run_command' && result.exit_code !== undefined && Number(result.exit_code) !== 0
@@ -86,10 +90,28 @@ function completionSafeResult(value, depth = 0) {
   return result;
 }
 
-function createTaskCompletion({ request, mode = 'build' } = {}) {
+function createTaskCompletion({ request, mode = 'build', messages = [], context = [] } = {}) {
   const currentRequest = String(request || '');
   const planOnly = completionOnlyPlan(currentRequest, mode);
-  const actionRequested = completionActionRequest(currentRequest);
+  let actionRequested = completionActionRequest(currentRequest);
+  const priorMessages = (Array.isArray(messages) && messages.length ? messages : Array.isArray(context) ? context : []);
+  const normReq = completionNormalize(currentRequest).replace(/^[¿¡\s]+/, '').trim();
+  const isQuestion = /^(?:[¿?]|que (?:es|son|tal)|como\b|cuanto\b|cual\b|por que\b|what\b|why\b|how\b|who\b|when\b|where\b)/i.test(normReq) || /[?]$/.test(currentRequest.trim());
+  let isFollowUp = false;
+  let followupContext = null;
+  if (!actionRequested && !isQuestion && currentRequest.trim().length <= 40 && priorMessages.length >= 2) {
+    const lastAssistant = [...priorMessages].reverse().find(m => m.role === 'assistant');
+    const lastUser = [...priorMessages].reverse().find(m => m.role === 'user');
+    const assistantAsked = lastAssistant && (/[?¿]/.test(typeof lastAssistant.content === 'string' ? lastAssistant.content : '') || /\b(?:prefieres|quieres|eliges|which|what)\b/i.test(typeof lastAssistant.content === 'string' ? lastAssistant.content : ''));
+    if (assistantAsked && lastUser && completionActionRequest(typeof lastUser.content === 'string' ? lastUser.content : '')) {
+      actionRequested = true;
+      isFollowUp = true;
+      followupContext = priorMessages.map(m => ({
+        role: m.role,
+        text: typeof m.content === 'string' ? m.content : Array.isArray(m.content) ? m.content.map(p => p.text || '').join('') : '',
+      }));
+    }
+  }
   const evidence = [], seen = new Set();
   let plan = [], progress = 0, reviewedProgress = 0, consecutiveNudges = 0, attempts = 0;
   let successfulTools = 0, failedTools = 0;
@@ -120,12 +142,32 @@ function createTaskCompletion({ request, mode = 'build' } = {}) {
   }
 
   function reviewMessages(text, { images = [] } = {}) {
-    const content = [{ type: 'text', text: JSON.stringify({
+    let payloadObj = {
       current_user_request: completionClip(currentRequest, 16000), mode, plan_is_the_deliverable: planOnly,
+      ...(isFollowUp && followupContext ? { context_for_interpreting_followup_only: followupContext } : {}),
       candidate_answer: completionClip(text, 10000), current_turn_plan: plan,
+      current_turn_milestones: [],
       current_turn_tool_results: evidence, successful_tools: successfulTools, failed_tools: failedTools,
       deterministic_unfinished_signals: pendingWork(text),
-    }, null, 2) }];
+    };
+    let payload = JSON.stringify(payloadObj, null, 2);
+    if (payload.length > 39000) {
+      const trimmedResults = evidence.slice(-6).map(e => ({
+        ...e,
+        result: typeof e.result === 'object' && e.result !== null
+          ? (Array.isArray(e.result.elements) ? { ...e.result, elements: e.result.elements.slice(0, 2).map(el => ({ ...el, text: completionClip(el.text, 50) })) } : completionSafeResult(e.result, 1))
+          : completionClip(String(e.result || ''), 500),
+      }));
+      payloadObj = {
+        current_user_request: completionClip(currentRequest, 6000), mode, plan_is_the_deliverable: planOnly,
+        candidate_answer: completionClip(text, 3000), current_turn_plan: plan,
+        current_turn_milestones: [],
+        current_turn_tool_results: trimmedResults, successful_tools: successfulTools, failed_tools: failedTools,
+        deterministic_unfinished_signals: pendingWork(text),
+      };
+      payload = JSON.stringify(payloadObj, null, 2);
+    }
+    const content = [{ type: 'text', text: payload }];
     for (const image of images.slice(-2)) {
       const url = typeof image === 'string' ? image : image?.url || image?.data_url || image?.image_url?.url;
       if (typeof url === 'string' && /^data:image\//i.test(url)) content.push({ type: 'image_url', image_url: { url } });
