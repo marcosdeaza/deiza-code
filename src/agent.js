@@ -365,8 +365,21 @@ function trimContext(messages, maxChars = MAX_CONTEXT_CHARS) {
     : JSON.stringify(m).length);
   const size = () => messages.reduce((n, m) => n + msgSize(m), 0);
   while (messages.length > 6 && size() > maxChars) {
-    messages.splice(1, 1);
-    while (messages.length > 2 && messages[1].role === 'tool') messages.splice(1, 1);
+    // Find the oldest non-system, non-compaction message to splice
+    let targetIdx = -1;
+    for (let i = 1; i < messages.length - 2; i++) {
+      const m = messages[i];
+      const text = typeof m?.content === 'string' ? m.content : '';
+      if (!text.startsWith('[MEMORIA DE SESIÓN COMPACTADA') && !text.startsWith('[CONTEXTO PREVIO COMPACTADO')) {
+        targetIdx = i;
+        break;
+      }
+    }
+    if (targetIdx === -1) targetIdx = 1;
+    messages.splice(targetIdx, 1);
+    while (messages.length > targetIdx && messages[targetIdx]?.role === 'tool') {
+      messages.splice(targetIdx, 1);
+    }
   }
 }
 
@@ -438,7 +451,9 @@ function compactContext(messages, { force = false, threshold = COMPACT_THRESHOLD
   const turnsToCompact = messages.slice(startIndex, splitIndex);
   const recentTurns = messages.slice(splitIndex);
 
-  // Extract user requests, files created/modified/read, bash commands, and assistant conclusions
+  // Extract root goal, constraints, user requests, files, commands, decisions
+  let originalGoal = '';
+  const criticalConstraints = new Set();
   const userRequests = [];
   const modifiedFiles = new Set();
   const readFiles = new Set();
@@ -449,8 +464,61 @@ function compactContext(messages, { force = false, threshold = COMPACT_THRESHOLD
     if (!m) continue;
     if (m.role === 'user') {
       const text = typeof m.content === 'string' ? m.content : Array.isArray(m.content) ? m.content.map(p => p.text || '').join(' ') : '';
-      if (text && !text.startsWith('[MEMORIA DE SESIÓN COMPACTADA') && !text.startsWith('[CONTEXTO PREVIO COMPACTADO')) {
-        const firstLine = text.trim().split('\n')[0].slice(0, 140);
+      if (!text) continue;
+
+      // Check if this is a previous compaction anchor — DO NOT DISCARD, MERGE IT!
+      if (text.startsWith('[MEMORIA DE SESIÓN COMPACTADA') || text.startsWith('[CONTEXTO PREVIO COMPACTADO')) {
+        const lines = text.split('\n');
+        let currentSection = '';
+        for (const rawLine of lines) {
+          const l = rawLine.trim();
+          if (l.startsWith('• Objetivo original y visión del proyecto:')) { currentSection = 'goal'; continue; }
+          if (l.startsWith('• Restricciones y reglas críticas')) { currentSection = 'constraints'; continue; }
+          if (l.startsWith('• Objetivos abordados') || l.startsWith('• Historial de peticiones')) { currentSection = 'requests'; continue; }
+          if (l.startsWith('• Archivos creados o modificados')) { currentSection = 'modified'; continue; }
+          if (l.startsWith('• Archivos leídos o consultados')) { currentSection = 'read'; continue; }
+          if (l.startsWith('• Comandos de terminal')) { currentSection = 'commands'; continue; }
+          if (l.startsWith('• Conclusiones técnicas')) { currentSection = 'decisions'; continue; }
+          if (l.startsWith('• Estado:')) { currentSection = ''; continue; }
+
+          if (currentSection === 'goal' && l) {
+            if (!originalGoal) originalGoal = l;
+            else originalGoal += '\n' + l;
+          } else if (currentSection === 'constraints' && l.startsWith('- ')) {
+            criticalConstraints.add(l.slice(2));
+          } else if (currentSection === 'requests' && l.startsWith('- ')) {
+            const req = l.slice(2);
+            if (!userRequests.includes(req)) userRequests.push(req);
+          } else if (currentSection === 'modified' && l.startsWith('- ')) {
+            modifiedFiles.add(l.slice(2));
+          } else if (currentSection === 'read' && l.startsWith('- ')) {
+            readFiles.add(l.slice(2));
+          } else if (currentSection === 'commands' && l.startsWith('- ')) {
+            if (!executedCommands.includes(l.slice(2))) executedCommands.push(l.slice(2));
+          } else if (currentSection === 'decisions' && l.startsWith('- ')) {
+            if (!keyConclusions.includes(l.slice(2))) keyConclusions.push(l.slice(2));
+          }
+        }
+        continue;
+      }
+
+      // Regular user message
+      if (!originalGoal) {
+        // First user message is the session's root goal! Preserve with its full rules/constraints
+        originalGoal = text.trim().slice(0, 1500);
+      }
+
+      // Extract explicit constraints, rules and negative constraints
+      const rawLines = text.split('\n');
+      for (const line of rawLines) {
+        const trimmed = line.trim();
+        if (/restricci|prohibid|no usar|sin usar|mant[eé]n|esquema|schema|currency|moneda|fee|cancellation|puerto|port|endpoint|tabla|database|modelo|config|obligatori|important|jam[aá]s|siempre/i.test(trimmed)) {
+          criticalConstraints.add(trimmed.slice(0, 200));
+        }
+      }
+
+      const firstLine = text.trim().split('\n')[0].slice(0, 140);
+      if (firstLine && !userRequests.includes(firstLine)) {
         userRequests.push(firstLine);
       }
     } else if (m.role === 'assistant') {
@@ -470,8 +538,14 @@ function compactContext(messages, { force = false, threshold = COMPACT_THRESHOLD
       }
       if (typeof m.content === 'string' && m.content.trim()) {
         const lines = m.content.trim().split('\n').filter(l => l.trim());
+        for (const l of lines) {
+          if (/decisi[oó]n|arquitectura|backend|frontend|base de datos|schema|tabla|modelo|regla/i.test(l)) {
+            const clean = l.replace(/^[-*•#\s]+/, '').slice(0, 180);
+            if (!keyConclusions.includes(clean)) keyConclusions.push(clean);
+          }
+        }
         const summarySnippet = lines[lines.length - 1].slice(0, 160);
-        if (summarySnippet && !summarySnippet.startsWith('✓')) {
+        if (summarySnippet && !summarySnippet.startsWith('✓') && !keyConclusions.includes(summarySnippet)) {
           keyConclusions.push(summarySnippet);
         }
       }
@@ -479,20 +553,26 @@ function compactContext(messages, { force = false, threshold = COMPACT_THRESHOLD
   }
 
   let summary = `[MEMORIA DE SESIÓN COMPACTADA · AUTO-COMPACT]\n`;
+  if (originalGoal) {
+    summary += `• Objetivo original y visión del proyecto:\n${originalGoal.split('\n').map(l => '  ' + l).join('\n')}\n`;
+  }
+  if (criticalConstraints.size > 0) {
+    summary += `• Restricciones y reglas críticas activas:\n  - ${Array.from(criticalConstraints).join('\n  - ')}\n`;
+  }
   if (userRequests.length > 0) {
-    summary += `• Objetivos abordados por el usuario:\n  - ${userRequests.slice(-8).join('\n  - ')}\n`;
+    summary += `• Historial de peticiones y correcciones:\n  - ${userRequests.slice(-16).join('\n  - ')}\n`;
   }
   if (modifiedFiles.size > 0) {
     summary += `• Archivos creados o modificados en la sesión:\n  - ${Array.from(modifiedFiles).join('\n  - ')}\n`;
   }
   if (readFiles.size > 0) {
-    summary += `• Archivos leídos o consultados:\n  - ${Array.from(readFiles).slice(-10).join('\n  - ')}\n`;
+    summary += `• Archivos leídos o consultados:\n  - ${Array.from(readFiles).slice(-15).join('\n  - ')}\n`;
   }
   if (executedCommands.length > 0) {
-    summary += `• Comandos de terminal ejecutados:\n  - ${executedCommands.slice(-8).join('\n  - ')}\n`;
+    summary += `• Comandos de terminal ejecutados:\n  - ${executedCommands.slice(-10).join('\n  - ')}\n`;
   }
   if (keyConclusions.length > 0) {
-    summary += `• Conclusiones técnicas y decisiones previas:\n  - ${keyConclusions.slice(-5).join('\n  - ')}\n`;
+    summary += `• Conclusiones técnicas y decisiones previas:\n  - ${keyConclusions.slice(-8).join('\n  - ')}\n`;
   }
   summary += `• Estado: Sesión compactada exitosamente. Continúa trabajando desde los mensajes recientes sin perder coherencia.`;
 
@@ -503,7 +583,7 @@ function compactContext(messages, { force = false, threshold = COMPACT_THRESHOLD
     },
     {
       role: 'assistant',
-      content: 'Memoria de la conversación compactada y consolidada. Tengo presente todo el historial del proyecto, archivos modificados y decisiones previas. Continuamos con el objetivo actual.',
+      content: 'Memoria de la conversación compactada y consolidada. Tengo presente todo el historial del proyecto, el objetivo original, restricciones obligatorias, archivos modificados y decisiones previas. Continuamos con el objetivo actual.',
     },
   ];
 
@@ -740,7 +820,8 @@ function looksUnfinished(text) {
   if (!lines.length) return false;
   const last = lines[lines.length - 1];
   if (/[:：]$/.test(last)) return true;
-  return /^(ahora|a continuación|seguidamente|luego|después|procedo|paso \d|voy a|vamos a|next|now)\b/i.test(last) && !/[.!?]$/.test(last);
+  const tail = lines.slice(-3).join(' ');
+  return /\b(ahora|a continuación|seguidamente|luego|después|procedo|paso \d|voy a|vamos a|procederé|modificaré|implementaré|desplegaré|actualizaré|crearé|revisaré|ejecutaré|cambiaré|entraré|aplicaré|next|now|i will|let me)\b/i.test(tail);
 }
 
 /**
@@ -793,7 +874,8 @@ async function runAgentTurn({ cfg, messages, userInput, confirmCallback, mode = 
   if (!quiet) console.log(`\n${C.guide}─────────────────────────────────────────────────────────────${C.reset}`);
 
   let continuations = 0;
-  let nudged = false;
+  let nudged = 0;
+  const MAX_NUDGES = 3;
   let failedRounds = 0;
   let stopReason = 'done';
 
@@ -954,9 +1036,19 @@ async function runAgentTurn({ cfg, messages, userInput, confirmCallback, mode = 
         messages.push({ role: 'user', content: 'Tu respuesta se cortó por el límite de longitud. Continúa exactamente donde lo dejaste, sin repetir nada de lo anterior. Si estabas escribiendo un archivo, hazlo con las herramientas (write_file + append_file por partes).' });
         continue;
       }
-      if (!nudged && looksUnfinished(assistantText)) {
-        nudged = true;
-        messages.push({ role: 'user', content: 'Has anunciado una acción pero no has llamado a ninguna herramienta. Continúa y ejecútala ahora con las herramientas (write_file/append_file/edit_file/run_command...). No repitas la explicación.' });
+      const hasCodeBlock = /```[a-zA-Z0-9_-]*\n[\s\S]*?```/.test(assistantText);
+      const isUnfinished = looksUnfinished(assistantText);
+      const readOnlyOnly = stats.tools > 0 && stats.files.size === 0 && stats.commands === 0;
+
+      if (nudged < MAX_NUDGES && (isUnfinished || (hasCodeBlock && mode !== 'plan') || (readOnlyOnly && isUnfinished))) {
+        nudged++;
+        let nudgeMsg = 'Has anunciado una acción pero no has llamado a ninguna herramienta. Continúa y ejecútala ahora con las herramientas (write_file/append_file/edit_file/run_command...). No repitas la explicación.';
+        if (hasCodeBlock && stats.files.size === 0) {
+          nudgeMsg = 'Has proporcionado el código en texto markdown pero no has aplicado los cambios en el disco. Aplica las modificaciones directamente en los archivos usando edit_file o write_file (y compila/despliega con run_command si corresponde). No repitas la explicación.';
+        } else if (readOnlyOnly) {
+          nudgeMsg = 'Has leído o consultado archivos pero no has aplicado los cambios prometidos. Aplica las modificaciones directamente en los archivos con edit_file o write_file y comprueba el resultado.';
+        }
+        messages.push({ role: 'user', content: nudgeMsg });
         continue;
       }
       break;
@@ -1083,8 +1175,8 @@ async function runAgentTurn({ cfg, messages, userInput, confirmCallback, mode = 
       messages.push({ role: 'user', content: 'Continúa exactamente desde donde se cortó la respuesta.' });
       continue;
     }
-    if (!toolCalls.length && looksUnfinished(assistantText) && !nudged) {
-      nudged = true;
+    if (!toolCalls.length && looksUnfinished(assistantText) && nudged < MAX_NUDGES) {
+      nudged++;
       messages.push({ role: 'user', content: 'Continúa y ejecuta la acción que acabas de anunciar con la herramienta correspondiente.' });
       continue;
     }
