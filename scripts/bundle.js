@@ -31,7 +31,7 @@ const header = `#!/usr/bin/env node
 /**
  * DEIZA CODE — Autonomous Terminal Coding Agent
  * Official Standalone CLI Distribution (${FLAVOR === 'closed' ? 'Deiza Omniscient edition' : 'open edition'})
- * Powered by Deiza Omniscient (Deiza Liquid 5.1)
+ * Powered by Deiza Liquid, Solid and Gas
  * https://deiza.org
  */
 

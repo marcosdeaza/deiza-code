@@ -1,4 +1,6 @@
 <p align="center">
+
+Liquid 5.5 arrives on October 12, 2026 at 00:00 Europe/Madrid, with 1M context and adaptive reasoning. `/model liquid` follows the active version automatically; `/model liquid-5.1` keeps the previous generation. The API alias `deiza-liquid` follows the same schedule.
   <img src="assets/banner.png" alt="Deiza Code Banner" width="100%" />
 </p>
 

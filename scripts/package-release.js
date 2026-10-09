@@ -9,10 +9,11 @@ const DOWNLOADS = path.join(DIST, 'downloads');
 fs.mkdirSync(DOWNLOADS, { recursive: true });
 
 // 1. Build open bundle
-execSync('node scripts/bundle.js --flavor open', { cwd: ROOT, stdio: 'inherit' });
+const flavor = process.argv.includes('--closed') ? 'closed' : 'open';
+execSync(`node scripts/bundle.js --flavor ${flavor}`, { cwd: ROOT, stdio: 'inherit' });
 
 // 2. Copy bundle to downloads
-fs.copyFileSync(path.join(DIST, 'deiza-code.js'), path.join(DOWNLOADS, 'deiza-code.js'));
+fs.copyFileSync(path.join(DIST, flavor === 'closed' ? 'deiza-code-closed.js' : 'deiza-code.js'), path.join(DOWNLOADS, 'deiza-code.js'));
 fs.chmodSync(path.join(DOWNLOADS, 'deiza-code.js'), 0o755);
 
 // 3. Write version.json
@@ -20,7 +21,7 @@ const { VERSION } = require('../src/config');
 const versionInfo = {
   version: VERSION,
   release_date: new Date().toISOString().split('T')[0],
-  notes: `v${VERSION}: /whoami enseña el modelo real (Solid 5 por defecto) y cuándo se reinicia entera tu semana; textos al día (sin el antiguo «Deiza Omniscient»). Deiza Code se usa con los planes Friend y Signet.`,
+  notes: `v${VERSION}: Liquid 5.5 llega el 12 de octubre también a Code y la API, con 1M de contexto y razonamiento adaptativo. Liquid se actualiza automáticamente; /model liquid-5.1 conserva la generación anterior.`,
   platforms: {
     darwin: "https://deiza.org/downloads/deiza-code.js",
     linux: "https://deiza.org/downloads/deiza-code.js",
