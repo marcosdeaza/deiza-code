@@ -80,7 +80,7 @@ const { runAgentTurn } = require('../src/agent');
     await execute([{ id: 'blocked', name: 'browser_click', args: { element_id: 'e1' } }, { id: 'read', name: 'browser_open', args: { url: 'https://example.test' } }], { mode: 'plan' });
     assert.deepEqual(toolRequests.slice(before).map(t => t.name), ['browser_open']);
     before = toolRequests.length;
-    await execute([{ id: 'shot', name: 'desktop_screenshot' }, { id: 'dom', name: 'browser_click', args: { element_id: 'e1' } }], { cfg: { ...cfg, model: 'deiza-gas' } });
+    await execute([{ id: 'shot', name: 'desktop_screenshot' }, { id: 'dom', name: 'browser_click', args: { element_id: 'e1' } }], { cfg: { ...cfg, model: 'deiza-gas-4.5' } });   // Gas 4.5 has no vision (GAS 5.5 does)
     assert.deepEqual(toolRequests.slice(before).map(t => t.name), ['browser_click']);
     before = toolRequests.length;
     let approval = '';
