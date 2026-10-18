@@ -9,7 +9,7 @@ const os = require('os');
 const https = require('https');
 const { exec, spawn, spawnSync } = require('child_process');
 const readline = require('readline');
-const { capuBeside, playCapu } = require('./mascot');
+const { capuBeside, capuForm, playCapu } = require('./mascot');
 const { C, BANNER, Status, box, COMMANDS_REGISTRY, MODE_INFO, modeBadge, modelBadge, renderModes, renderModelSelector, renderCommandPalette, renderWhoami, renderSessionList, renderSessionInfo, renderCompactionCard, selectSessionInteractive } = require('./ui');
 const { loadConfig, saveConfig, DEFAULT_MODEL, VERSION, MODES, IS_CLOSED, normalizeMode, normalizeModel, normalizeUrl, isDeizaHost, MODEL_INFO, NATIVE_MODELS, contextLimit, EFFORTS, effortForModel, modelSupportsEffort, isGas55Model } = require('./config');
 const { runLoginFlow, ensureAuthenticated, fetchModels, fetchUsage } = require('./auth');
@@ -148,7 +148,7 @@ function printHeader(cfg, currentMode) {
     `${C.gray}${engine}${C.reset} ${C.darkGray}·${C.reset} ${mode.color}${mode.label}${C.reset} ${C.darkGray}${mode.desc.split(':')[0].toLowerCase()}${C.reset}`,
     `${C.darkGray}${process.cwd().replace(os.homedir(), '~')}${git.isGit ? ` · ${git.branch}` : ''}${projType && projType !== 'General Codebase' ? ` · ${projType}` : ''}${C.reset}`,
     who ? `${C.darkGray}${who}${C.reset}` : '',
-  ]) + '\n');
+  ], 'idle', '  ', cfg.isCustomEndpoint ? 'liquid' : capuForm(cfg.model || DEFAULT_MODEL)) + '\n');
 }
 
 async function startRepl(initialConfig) {
@@ -604,7 +604,7 @@ async function startRepl(initialConfig) {
       }
 
       if (cmd === '/capu') {
-        await playCapu();
+        await playCapu(cfg.isCustomEndpoint ? 'liquid' : capuForm(cfg.model || DEFAULT_MODEL));
         rl.prompt();
         return;
       }
@@ -865,8 +865,11 @@ async function startRepl(initialConfig) {
             cfg.model = resolved;
             saveConfig(cfg);
             const info = MODEL_INFO[resolved];
-            console.log(`\n  ${C.green}✓ Modelo cambiado a:${C.reset} ${C.bold}${info.name}${C.reset} ${C.gray}[${info.badge}]${C.reset}`);
-            console.log(`    ${C.gray}${info.desc}${C.reset}\n`);
+            // each model has its own Capu: show the one that comes with it
+            console.log('\n' + capuBeside([
+              `${C.green}✓ Modelo cambiado a:${C.reset} ${C.bold}${info.name}${C.reset} ${C.gray}[${info.badge}]${C.reset}`,
+              `${C.gray}${info.desc}${C.reset}`,
+            ], 'idle', '  ', capuForm(resolved)) + '\n');
             rl.setPrompt(getPrompt());
           } else {
             console.log(`\n  ${C.granateBright}✖ Modelo desconocido:${C.reset} "${targetArg}"\n`);

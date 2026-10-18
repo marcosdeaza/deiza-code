@@ -36,8 +36,14 @@ Mira a **Deiza Code** analizando el repositorio, realizando preguntas interactiv
 
 Capu es la mascota de Deiza Code: un capullo de rosa hecho bloque, con el pétalo izquierdo más alto y dos ojos que son huecos. En la terminal te recibe al abrir (y saluda con `/capu`); en la app de escritorio acompaña al agente mientras trabaja: teclea en un portátil lleno de pegatinas, sopla el café, se echa una lata por el hueco de los pétalos, le explica el bug al pato de goma, espera a que compile y florece cuando la tarea termina. Si se acaba el uso, se mustia y se pone a escribir el traspaso.
 
+Cada modelo tiene su Capu: con Gas es pequeño y violeta, con Liquid es el de siempre y con Solid es un granate tallado, más grande y con vetas de oro. Lo ves al abrir, con `/capu` y al cambiar de modelo; en la app de escritorio, además, evoluciona de una forma a otra.
+
+<p align="center">
+  <img src="assets/capu/capu-forms.svg" alt="Capu cambia de forma con el modelo: Liquid, Solid y Gas" width="330" />
+</p>
+
 ```
-  ██▄ ▄▄     Deiza Code 2.5.5
+  ██▄ ▄▄     Deiza Code 2.5.6
   ████████   Liquid 5.5 · BUILD autónomo
   ██ ██ ██   ~/proyecto · main
   ████████   Marcos · Signet · uso 12 %

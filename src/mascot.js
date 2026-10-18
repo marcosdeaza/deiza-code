@@ -5,6 +5,9 @@
  * que son huecos. En la terminal se pinta con medios bloques (un carácter = 1×2 píxeles), así que
  * ocupa 8 columnas y 5 filas. La versión animada con props (portátil, café, lata, pato de goma)
  * vive en la app de escritorio y en deiza.org; aquí están el retrato, sus frases y /capu.
+ *
+ * Como en la app, cada modelo tiene su Capu: Gas es pequeño y violeta (6 columnas, con una voluta
+ * de vapor), Liquid es el de siempre y Solid un granate tallado, más grande (10 × 6) y con vetas de oro.
  */
 
 const fs = require('fs');
@@ -15,6 +18,10 @@ const CAPU_RGB = {
   x: [154, 55, 67],    // lado
   R: [240, 154, 166],  // flor
   L: [148, 176, 124],  // hoja
+  F: [201, 82, 95],    // canto iluminado (Solid)
+  Y: [231, 180, 71],   // veta de oro (Solid)
+  y: [194, 139, 44],   // veta de oro en sombra (Solid)
+  u: [217, 197, 242],  // vapor (Gas)
 };
 
 const CAPU_POSES = {
@@ -80,19 +87,52 @@ const CAPU_POSES = {
   ],
 };
 
+// Gas: 6 × 10 with the wisp of vapour; Solid: 10 × 12. Eyes always fall on one terminal line.
+const GAS_POSES = {
+  idle: ['......', '..u...', '.u....', 'XX....', 'XX.XX.', 'XXXXXx', 'X.XX.x', 'X.XX.x', 'XXXXXx', '.X..X.'],
+  blink: ['......', '..u...', '.u....', 'XX....', 'XX.XX.', 'XXXXXx', 'XXXXXx', 'X.XX.x', 'XXXXXx', '.X..X.'],
+  look: ['......', '.u....', '..u...', 'XX....', 'XX.XX.', 'X.XX.x', 'X.XX.x', 'XXXXXx', 'XXXXXx', '.X..X.'],
+  bloom: ['......', '......', '......', 'XR..RX', 'XRRRRX', 'XXXXXx', 'XXXXXx', 'X.XX.x', 'XXXXXx', '.X..X.'],
+  wilt: ['......', '......', '......', '......', 'XX.X..', 'XXXXXx', 'XXXXXx', 'X.XX.x', 'XXXXXx', '.X..X.'],
+};
+const SOLID_BODY = (eyes) => {
+  const open = 'FXX.XX.XXx', shut = 'FXXXXXXXXx';
+  const e = eyes === 'closed' ? [shut, shut, open] : eyes === 'up' ? [open, open, shut] : [shut, open, open];
+  return ['FXXXXXXXyx', 'FXXXXXXXYx', ...e, 'FXXXXXXXXx', 'FyXXXXXXXx', 'FXYXXXXXXx', '.XX....XX.'];
+};
+const SOLID_POSES = {
+  idle: ['XX........', 'XXX..XX...', 'XXXX.XXX.X', ...SOLID_BODY('open')],
+  blink: ['XX........', 'XXX..XX...', 'XXXX.XXX.X', ...SOLID_BODY('closed')],
+  look: ['XX........', 'XXX..XX...', 'XXXX.XXX.X', ...SOLID_BODY('up')],
+  bloom: ['X.RR..RR.X', 'XRRRRRRRRX', 'XXRRRRRRXx', ...SOLID_BODY('closed')],
+  wilt: ['..........', '..........', 'XXX.XX.X..', ...SOLID_BODY('closed')],
+};
+const CAPU_FORMS = {
+  liquid: { poses: CAPU_POSES, rgb: {} },
+  gas: { poses: GAS_POSES, rgb: { X: [156, 108, 203], x: [122, 76, 168], R: [238, 220, 251] } },
+  solid: { poses: SOLID_POSES, rgb: { X: [169, 51, 63], x: [123, 33, 48] } },
+};
+/** The Capu of a model: Gas and Solid have their own; Liquid and any other engine get the usual one. */
+function capuForm(model) {
+  const m = String(model || '').toLowerCase();
+  return /gas/.test(m) ? 'gas' : /solid/.test(m) ? 'solid' : 'liquid';
+}
+
 const capuColorOk = () => process.stdout.isTTY && !process.env.NO_COLOR && process.env.TERM !== 'dumb';
 
-/** The pose as terminal lines (8 columns × 5 rows). */
-function capuLines(pose = 'idle') {
-  const rows = CAPU_POSES[pose] || CAPU_POSES.idle;
+/** The pose as terminal lines (Liquid 8 × 5, Gas 6 × 5, Solid 10 × 6). */
+function capuLines(pose = 'idle', form = 'liquid') {
+  const f = CAPU_FORMS[form] || CAPU_FORMS.liquid;
+  const rows = f.poses[pose] || f.poses.idle;
+  const rgb = { ...CAPU_RGB, ...f.rgb };
   const color = capuColorOk();
-  const fg = (c) => `\x1b[38;2;${CAPU_RGB[c].join(';')}m`;
-  const bg = (c) => `\x1b[48;2;${CAPU_RGB[c].join(';')}m`;
+  const fg = (c) => `\x1b[38;2;${rgb[c].join(';')}m`;
+  const bg = (c) => `\x1b[48;2;${rgb[c].join(';')}m`;
   const out = [];
   for (let y = 0; y < rows.length; y += 2) {
     let line = '';
     let last = '';
-    for (let x = 0; x < 8; x++) {
+    for (let x = 0; x < rows[y].length; x++) {
       const a = rows[y][x] === '.' ? null : rows[y][x];
       const b = rows[y + 1] && rows[y + 1][x] !== '.' ? rows[y + 1][x] : null;
       if (!color) { line += a && b ? '█' : a ? '▀' : b ? '▄' : ' '; continue; }
@@ -111,11 +151,12 @@ function capuLines(pose = 'idle') {
 }
 
 /** Capu on the left, up to five lines of text on the right. */
-function capuBeside(textLines, pose = 'idle', indent = '  ') {
-  const art = capuLines(pose);
+function capuBeside(textLines, pose = 'idle', indent = '  ', form = 'liquid') {
+  const art = capuLines(pose, form);
+  const width = ((CAPU_FORMS[form] || CAPU_FORMS.liquid).poses.idle[0] || '').length;
   const n = Math.max(art.length, textLines.length);
   const lines = [];
-  for (let i = 0; i < n; i++) lines.push(`${indent}${art[i] || '        '}   ${textLines[i] || ''}`);
+  for (let i = 0; i < n; i++) lines.push(`${indent}${art[i] || ' '.repeat(width)}   ${textLines[i] || ''}`);
   return lines.join('\n');
 }
 
@@ -156,23 +197,24 @@ function capuLabel(kind = 'thinking', first) {
   };
 }
 
-/** /capu: a short animation in place (blink, look around, bloom). */
-async function playCapu() {
+/** /capu: a short animation in place (blink, look around, bloom), as the Capu of the model in use. */
+async function playCapu(form = 'liquid') {
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   const text = [
     '\x1b[1mCapu\x1b[0m',
     '\x1b[38;5;248mla mascota de Deiza Code\x1b[0m',
-    '\x1b[38;5;244mun capullo de rosa hecho bloque\x1b[0m',
+    `\x1b[38;5;244m${{ gas: 'con Gas: pequeño, violeta y ligero', solid: 'con Solid: un granate tallado, más grande' }[form] || 'un capullo de rosa hecho bloque'}\x1b[0m`,
     '\x1b[38;5;244mflorece cuando terminas algo\x1b[0m',
   ];
-  if (!process.stdout.isTTY) { console.log(capuBeside(text)); return; }
+  if (!process.stdout.isTTY) { console.log(capuBeside(text, 'idle', '  ', form)); return; }
   const seq = [['idle', 700], ['blink', 120], ['idle', 600], ['look', 700], ['idle', 400], ['blink', 120], ['idle', 300], ['bloom', 1400], ['idle', 200]];
   process.stdout.write('\n');
   let first = true;
+  const height = Math.max(text.length, capuLines('idle', form).length);
   for (const [pose, ms] of seq) {
-    if (!first) process.stdout.write('\x1b[5A');
+    if (!first) process.stdout.write(`\x1b[${height}A`);
     first = false;
-    process.stdout.write(capuBeside(text, pose).split('\n').map(l => `\x1b[2K${l}`).join('\n') + '\n');
+    process.stdout.write(capuBeside(text, pose, '  ', form).split('\n').map(l => `\x1b[2K${l}`).join('\n') + '\n');
     await sleep(ms);
   }
   process.stdout.write('\n');
@@ -222,4 +264,4 @@ function ensureHandoff({ startedAt, userInput, files = [], commands = [], messag
   return { path: file, by: 'cli' };
 }
 
-module.exports = { CAPU_POSES, capuLines, capuBeside, CAPU_PHRASES, capuLabel, playCapu, ensureHandoff };
+module.exports = { CAPU_POSES, CAPU_FORMS, capuForm, capuLines, capuBeside, CAPU_PHRASES, capuLabel, playCapu, ensureHandoff };

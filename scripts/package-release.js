@@ -21,7 +21,7 @@ const { VERSION } = require('../src/config');
 const versionInfo = {
   version: VERSION,
   release_date: new Date().toISOString().split('T')[0],
-  notes: `v${VERSION}: GAS 5.5 anunciado. Disponible automáticamente el 19 de octubre a las 12:00 (hora peninsular) en chat, Code y API. Gas 4.5 queda como generación obsoleta.`,
+  notes: `v${VERSION}: cada modelo tiene su Capu: Gas pequeño y violeta, Liquid el de siempre y Solid un granate tallado, más grande. Sigue GAS 5.5 con esfuerzo ajustable (/effort) desde el 19 de octubre a las 12:00 (hora peninsular).`,
   platforms: {
     darwin: "https://deiza.org/downloads/deiza-code.js",
     linux: "https://deiza.org/downloads/deiza-code.js",
