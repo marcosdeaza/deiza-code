@@ -21,7 +21,7 @@ const { VERSION } = require('../src/config');
 const versionInfo = {
   version: VERSION,
   release_date: new Date().toISOString().split('T')[0],
-  notes: `v${VERSION}: GAS 5.5 ya está disponible: /model gas usa GAS 5.5, con esfuerzo ajustable (/effort, Bajo por defecto), imágenes y 200K de contexto con la misma cuota de Gas. Gas 4.5 sigue como generación anterior (/model gas-4.5). Cada modelo tiene su Capu.`,
+  notes: `v${VERSION}: GAS 5.5 ya está disponible (/model gas, esfuerzo con /effort). Los modelos anteriores que sigues pudiendo usar, como Gas 4.5 y Liquid 5.1, tienen su Capu en modo abuelo: bastón, monóculo y cejas blancas.`,
   platforms: {
     darwin: "https://deiza.org/downloads/deiza-code.js",
     linux: "https://deiza.org/downloads/deiza-code.js",

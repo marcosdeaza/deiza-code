@@ -22,6 +22,9 @@ const CAPU_RGB = {
   Y: [231, 180, 71],   // veta de oro (Solid)
   y: [194, 139, 44],   // veta de oro en sombra (Solid)
   u: [217, 197, 242],  // vapor (Gas)
+  W: [244, 236, 225],  // cejas blancas (modo abuelo)
+  C: [110, 68, 49],    // bastón (modo abuelo)
+  c: [142, 91, 64],    // puño del bastón (modo abuelo)
 };
 
 const CAPU_POSES = {
@@ -112,10 +115,52 @@ const CAPU_FORMS = {
   gas: { poses: GAS_POSES, rgb: { X: [156, 108, 203], x: [122, 76, 168], R: [238, 220, 251] } },
   solid: { poses: SOLID_POSES, rgb: { X: [169, 51, 63], x: [123, 33, 48] } },
 };
-/** The Capu of a model: Gas and Solid have their own; Liquid and any other engine get the usual one. */
+
+// Modo abuelo, for retired models that can still be used (Gas 4.5, Liquid 5.1): the same Capu,
+// faded, with white eyebrows, a gold monocle and a cane on the left.
+const OLD_RGB = {
+  liquid: { X: [176, 100, 108], x: [138, 76, 84] },
+  gas: { X: [160, 138, 186], x: [125, 104, 152], R: [238, 220, 251] },
+  solid: { X: [154, 72, 82], x: [114, 52, 62], F: [178, 101, 112] },
+};
+const isBody = (c) => c === 'X' || c === 'x' || c === 'F';
+function oldRows(rows) {
+  const eyes = [];
+  rows.forEach((r, y) => {
+    if (!isBody(r[0]) || !isBody(r[r.length - 1])) return;
+    // an eye is a hole with body on both sides and above it (crest notches have sky above)
+    for (let x = 1; x < r.length - 1; x++) {
+      if (r[x] === '.' && isBody(r[x - 1]) && isBody(r[x + 1]) && rows[y - 1] && isBody(rows[y - 1][x])) eyes.push([x, y]);
+    }
+  });
+  const grid = rows.map(r => r.split(''));
+  if (eyes.length) {
+    const top = Math.min(...eyes.map(e => e[1]));
+    const left = Math.min(...eyes.map(e => e[0])), right = Math.max(...eyes.map(e => e[0]));
+    for (const x of [left, right]) if (grid[top - 1] && isBody(grid[top - 1][x])) grid[top - 1][x] = 'W';
+    for (const y of [top, top + 1]) if (grid[y] && isBody(grid[y][right + 1])) grid[y][right + 1] = 'Y';
+  }
+  const hook = Math.max(2, rows.length - 6);
+  return grid.map((r, y) => {
+    const cane = y < hook ? '...' : y === hook ? 'cc.' : y === hook + 1 ? 'cC.' : '.C.';
+    return cane + r.join('');
+  });
+}
+for (const base of ['liquid', 'gas', 'solid']) {
+  const f = CAPU_FORMS[base];
+  const poses = {};
+  for (const [name, rows] of Object.entries(f.poses)) poses[name] = oldRows(rows);
+  CAPU_FORMS[`${base}:old`] = { poses, rgb: { ...f.rgb, ...OLD_RGB[base] } };
+}
+
+// Pinned ids of retired generations that can still be used.
+const CAPU_LEGACY = /gas-4\.5|liquid-5\.1|liquid-4\.5/;
+/** The Capu of a model: Gas and Solid have their own; Liquid and any other engine get the usual one.
+ *  A retired generation that is still available gets the same Capu in old mode. */
 function capuForm(model) {
   const m = String(model || '').toLowerCase();
-  return /gas/.test(m) ? 'gas' : /solid/.test(m) ? 'solid' : 'liquid';
+  const base = /gas/.test(m) ? 'gas' : /solid/.test(m) ? 'solid' : 'liquid';
+  return CAPU_LEGACY.test(m) ? `${base}:old` : base;
 }
 
 const capuColorOk = () => process.stdout.isTTY && !process.env.NO_COLOR && process.env.TERM !== 'dumb';
@@ -203,7 +248,7 @@ async function playCapu(form = 'liquid') {
   const text = [
     '\x1b[1mCapu\x1b[0m',
     '\x1b[38;5;248mla mascota de Deiza Code\x1b[0m',
-    `\x1b[38;5;244m${{ gas: 'con Gas: pequeño, violeta y ligero', solid: 'con Solid: un granate tallado, más grande' }[form] || 'un capullo de rosa hecho bloque'}\x1b[0m`,
+    `\x1b[38;5;244m${String(form).endsWith(':old') ? 'modelo anterior: jubilado, pero en activo' : ({ gas: 'con Gas: pequeño, violeta y ligero', solid: 'con Solid: un granate tallado, más grande' }[form] || 'un capullo de rosa hecho bloque')}\x1b[0m`,
     '\x1b[38;5;244mflorece cuando terminas algo\x1b[0m',
   ];
   if (!process.stdout.isTTY) { console.log(capuBeside(text, 'idle', '  ', form)); return; }
