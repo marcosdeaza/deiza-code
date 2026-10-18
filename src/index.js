@@ -824,7 +824,7 @@ async function startRepl(initialConfig) {
 
       if (cmd === '/effort') {
         if (!cfg.isCustomEndpoint && !modelSupportsEffort(cfg.model)) {
-          console.log(`\n  ${C.gray}Gas 4.5 no tiene niveles de razonamiento. GAS 5.5 los incorpora desde el 19 de octubre a las 12:00.${C.reset}\n`);
+          console.log(`\n  ${C.gray}Gas 4.5 no tiene niveles de razonamiento. GAS 5.5 los incorpora: elígelo con /model gas.${C.reset}\n`);
         } else {
           const chosen = String(parts[1] || '').toLowerCase();
           if (chosen && !EFFORTS.includes(chosen)) console.log(`\n  ${C.gray}Usa /effort low|medium|high|ultra|max.${C.reset}\n`);

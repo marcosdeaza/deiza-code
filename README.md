@@ -54,7 +54,7 @@ Ficha completa del personaje: [assets/capu/capu-sheet.png](assets/capu/capu-shee
 
 ## Versión actual: 2.5.5
 
-GAS 5.5 se activa automáticamente el **19 de octubre de 2026 a las 12:00, hora peninsular española**. Hasta entonces, `/model gas` sigue usando Gas 4.5. Al activarse, el alias pasa a GAS 5.5; `/model gas-4.5` conserva la generación anterior y `/model gas-5.5` selecciona la nueva de forma explícita.
+GAS 5.5 está disponible desde el **18 de octubre de 2026 a las 17:00, hora peninsular española**: `/model gas` usa GAS 5.5; `/model gas-4.5` conserva la generación anterior y `/model gas-5.5` selecciona la nueva de forma explícita.
 
 GAS 5.5 incorpora **200K de contexto, imágenes, herramientas y esfuerzo ajustable**, con Bajo por defecto. Usa `/effort low`, `/effort medium`, `/effort high`, `/effort ultra` o `/effort max`; la preferencia de GAS se guarda por separado. Subir el esfuerzo puede aumentar el tiempo y los tokens de cada petición. Se mantiene la cuota de Gas 4.5.
 
@@ -65,7 +65,7 @@ GAS 5.5 incorpora **200K de contexto, imágenes, herramientas y esfuerzo ajustab
 - Si la cuota se acaba a mitad de una tarea, Deiza no corta: sigue con un margen de cortesía, lleva el trabajo a un punto estable, hace el guardado o despliegue de emergencia si la tarea lo pedía y escribe `DEIZA_HANDOFF.md` en la raíz del proyecto con el objetivo, el estado, los cambios, lo pendiente y un prompt listo para la siguiente sesión (o para otra IA). Si el agente no llega a escribirlo, el CLI lo genera con lo hecho en la sesión.
 - El contexto ocupado se ve siempre en el prompt: `[48.2k/256K · 18.8%]`, y en detalle con `/context`.
 - Solid 5 es el modelo por defecto: con 1M de tokens de contexto ve el proyecto entero y saca aplicaciones completas casi de una sola vez.
-- Ventanas de contexto: Solid 5 y Liquid 5.5, 1M de tokens; Gas 4.5, 131.072; GAS 5.5, 200.000 desde el 19 de octubre de 2026 a las 12:00 (hora peninsular). Deiza compacta sola al 70 % (y con `/compact` cuando quieras).
+- Ventanas de contexto: Solid 5 y Liquid 5.5, 1M de tokens; Gas 4.5, 131.072; GAS 5.5, 200.000. Deiza compacta sola al 70 % (y con `/compact` cuando quieras).
 
 ## Navegador, control del equipo y adjuntos
 
