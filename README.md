@@ -1,6 +1,5 @@
 <p align="center">
 
-Liquid 5.5 arrives on October 12, 2026 at 00:00 Europe/Madrid, with 1M context and adaptive reasoning. `/model liquid` follows the active version automatically; `/model liquid-5.1` keeps the previous generation. The API alias `deiza-liquid` follows the same schedule.
   <img src="assets/banner.png" alt="Deiza Code Banner" width="100%" />
 </p>
 
@@ -38,14 +37,20 @@ Mira a **Deiza Code** analizando el repositorio, realizando preguntas interactiv
 Capu es la mascota de Deiza Code: un capullo de rosa hecho bloque, con el pétalo izquierdo más alto y dos ojos que son huecos. En la terminal te recibe al abrir (y saluda con `/capu`); en la app de escritorio acompaña al agente mientras trabaja: teclea en un portátil lleno de pegatinas, sopla el café, se echa una lata por el hueco de los pétalos, le explica el bug al pato de goma, espera a que compile y florece cuando la tarea termina. Si se acaba el uso, se mustia y se pone a escribir el traspaso.
 
 ```
-  ██▄ ▄▄     Deiza Code 2.3.0
-  ████████   Liquid 5.1 · BUILD autónomo
+  ██▄ ▄▄     Deiza Code 2.5.5
+  ████████   Liquid 5.5 · BUILD autónomo
   ██ ██ ██   ~/proyecto · main
   ████████   Marcos · Signet · uso 12 %
   ▀█▀▀▀▀█▀
 ```
 
 Ficha completa del personaje: [assets/capu/capu-sheet.png](assets/capu/capu-sheet.png).
+
+## Versión actual: 2.5.5
+
+GAS 5.5 se activa automáticamente el **19 de octubre de 2026 a las 12:00, hora peninsular española**. Hasta entonces, `/model gas` sigue usando Gas 4.5. Al activarse, el alias pasa a GAS 5.5; `/model gas-4.5` conserva la generación anterior y `/model gas-5.5` selecciona la nueva de forma explícita.
+
+GAS 5.5 incorpora **200K de contexto, imágenes, herramientas y esfuerzo ajustable**, con Bajo por defecto. Usa `/effort low`, `/effort medium`, `/effort high`, `/effort ultra` o `/effort max`; la preferencia de GAS se guarda por separado. Subir el esfuerzo puede aumentar el tiempo y los tokens de cada petición. Se mantiene la cuota de Gas 4.5.
 
 ## Uso y margen de cortesía
 
@@ -54,13 +59,13 @@ Ficha completa del personaje: [assets/capu/capu-sheet.png](assets/capu/capu-shee
 - Si la cuota se acaba a mitad de una tarea, Deiza no corta: sigue con un margen de cortesía, lleva el trabajo a un punto estable, hace el guardado o despliegue de emergencia si la tarea lo pedía y escribe `DEIZA_HANDOFF.md` en la raíz del proyecto con el objetivo, el estado, los cambios, lo pendiente y un prompt listo para la siguiente sesión (o para otra IA). Si el agente no llega a escribirlo, el CLI lo genera con lo hecho en la sesión.
 - El contexto ocupado se ve siempre en el prompt: `[48.2k/256K · 18.8%]`, y en detalle con `/context`.
 - Solid 5 es el modelo por defecto: con 1M de tokens de contexto ve el proyecto entero y saca aplicaciones completas casi de una sola vez.
-- Ventanas de contexto reales, medidas contra cada motor: Solid 5 1M de tokens, Liquid 5.1 256K y Gas 4.5 128K. Deiza compacta sola al 70 % (y con `/compact` cuando quieras).
+- Ventanas de contexto: Solid 5 y Liquid 5.5, 1M de tokens; Gas 4.5, 131.072; GAS 5.5, 200.000 desde el 19 de octubre de 2026 a las 12:00 (hora peninsular). Deiza compacta sola al 70 % (y con `/compact` cuando quieras).
 
 ## Navegador, control del equipo y adjuntos
 
 Con la app de **Deiza abierta en el mismo equipo**, Code de la terminal puede abrir páginas, leer sus elementos, hacer capturas, clicar, escribir y desplazarse. Sirve para probar las webs que crea y trabajar en correo o Teams web con tu sesión iniciada manualmente. `/computer` comprueba la conexión. El enlace es local, autenticado y no necesita dependencias del navegador en el CLI.
 
-El control de aplicaciones instaladas se habilita en Deiza y requiere los permisos del sistema. Solid y Liquid pueden inspeccionar capturas y controlar ventanas; Gas utiliza el texto y los elementos del navegador. En Plan se permite leer y capturar; en Copilot apruebas las interacciones. Leer correo o Teams no autoriza enviar mensajes, borrar datos o grabar llamadas. Las tareas se realizan durante el turno: no hay vigilancia permanente en segundo plano.
+El control de aplicaciones instaladas se habilita en Deiza y requiere los permisos del sistema. Solid y Liquid pueden inspeccionar capturas y controlar ventanas. Gas 4.5 utiliza el texto y los elementos del navegador; GAS 5.5 incorpora visión y herramientas desde su activación. En Plan se permite leer y capturar; en Copilot apruebas las interacciones. Leer correo o Teams no autoriza enviar mensajes, borrar datos o grabar llamadas. Las tareas se realizan durante el turno: no hay vigilancia permanente en segundo plano.
 
 Para adjuntar cualquier archivo, carpeta, ZIP o imagen, arrastra o pega su ruta en la terminal, o escribe:
 
@@ -75,15 +80,15 @@ Revisa estos archivos y explica qué falta.
 
 **Deiza Code** es un agente de desarrollo para terminal: rápido, ergonómico y preciso.
 
-Impulsado por los modelos de Deiza (**Liquid 5.1**, **Solid 5** y **Gas 4.5**) en la infraestructura dedicada de Deiza: diffs quirúrgicos, ejecución autónoma y visión, sin colas de espera. Requiere una cuenta de Deiza (cualquier plan): la cuota se sincroniza con tu ventana de uso de 5 horas y el login se hace en un clic desde el navegador.
+Impulsado por los modelos de Deiza (**Liquid 5.5**, **Solid 5** y **Gas**) en la infraestructura dedicada de Deiza: diffs quirúrgicos, ejecución autónoma y visión, sin colas de espera. Requiere una cuenta de Deiza (cualquier plan): la cuota se sincroniza con tu ventana de uso de 5 horas y el login se hace en un clic desde el navegador.
 
 ### Dos ediciones, un mismo código
 
 | | Edición **open** (este repositorio) | Edición **Deiza** (instalador de deiza.org) |
 | :--- | :--- | :--- |
 | Login con cuenta de Deiza | Obligatorio | Obligatorio |
-| Motor por defecto | Deiza Omniscient | Deiza Omniscient |
-| Otros motores (`--endpoint`, `/endpoint`) | Sí: cualquier servidor OpenAI-compatible (Ollama, vLLM, LM Studio, OpenAI…) | No: funciona en exclusiva con Deiza Omniscient y tu cuota |
+| Motor por defecto | Deiza Solid 5 | Deiza Solid 5 |
+| Otros motores (`--endpoint`, `/endpoint`) | Sí: cualquier servidor OpenAI-compatible (Ollama, vLLM, LM Studio, OpenAI…) | No: funciona en exclusiva con los modelos de Deiza y tu cuota |
 | Build | `node scripts/bundle.js` | `node scripts/bundle.js --flavor closed` |
 
 > **Cero Lock-in en la edición open:** el motor está desacoplado para que puedas **reciclar Deiza Code como CLI agéntica con cualquier otro proyecto o endpoint de IA**.

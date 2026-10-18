@@ -21,7 +21,7 @@ const { VERSION } = require('../src/config');
 const versionInfo = {
   version: VERSION,
   release_date: new Date().toISOString().split('T')[0],
-  notes: `v${VERSION}: Liquid 5.5 llega el 12 de octubre también a Code y la API, con 1M de contexto y razonamiento adaptativo. Liquid se actualiza automáticamente; /model liquid-5.1 conserva la generación anterior.`,
+  notes: `v${VERSION}: GAS 5.5 anunciado. Disponible automáticamente el 19 de octubre a las 12:00 (hora peninsular) en chat, Code y API. Gas 4.5 queda como generación obsoleta.`,
   platforms: {
     darwin: "https://deiza.org/downloads/deiza-code.js",
     linux: "https://deiza.org/downloads/deiza-code.js",

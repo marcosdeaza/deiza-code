@@ -11,7 +11,7 @@ const { exec, spawn, spawnSync } = require('child_process');
 const readline = require('readline');
 const { capuBeside, playCapu } = require('./mascot');
 const { C, BANNER, Status, box, COMMANDS_REGISTRY, MODE_INFO, modeBadge, modelBadge, renderModes, renderModelSelector, renderCommandPalette, renderWhoami, renderSessionList, renderSessionInfo, renderCompactionCard, selectSessionInteractive } = require('./ui');
-const { loadConfig, saveConfig, DEFAULT_MODEL, VERSION, MODES, IS_CLOSED, normalizeMode, normalizeModel, normalizeUrl, isDeizaHost, MODEL_INFO, NATIVE_MODELS, contextLimit } = require('./config');
+const { loadConfig, saveConfig, DEFAULT_MODEL, VERSION, MODES, IS_CLOSED, normalizeMode, normalizeModel, normalizeUrl, isDeizaHost, MODEL_INFO, NATIVE_MODELS, contextLimit, EFFORTS, effortForModel, modelSupportsEffort, isGas55Model } = require('./config');
 const { runLoginFlow, ensureAuthenticated, fetchModels, fetchUsage } = require('./auth');
 const { runAgentTurn, streamCompletion, compactContext, sanitizeHistory } = require('./agent');
 const { Tools } = require('./tools');
@@ -196,7 +196,9 @@ async function startRepl(initialConfig) {
     const pctLabel = curTokens > 0 ? `${((curTokens / curLimit) * 100).toFixed(1)}%` : '0%';
     const contextBadge = `${C.darkGray}[${C.gold}${tokLabel}${C.darkGray}/${Math.round(curLimit / 1024)}K · ${pctLabel}]${C.reset}`;
     const mBadge = modelBadge(cfg.model || DEFAULT_MODEL);
-    return `${C.granateBold}deiza${C.reset} ${modeBadge(currentMode)} ${mBadge} ${contextBadge} ${C.granateBright}❯${C.reset} `;
+    const effort = effortForModel(cfg);
+    const effortBadge = effort ? ` ${C.darkGray}[${effort}]${C.reset}` : '';
+    return `${C.granateBold}deiza${C.reset} ${modeBadge(currentMode)} ${mBadge}${effortBadge} ${contextBadge} ${C.granateBright}❯${C.reset} `;
   };
 
   const slashCompleter = (line) => {
@@ -820,6 +822,24 @@ async function startRepl(initialConfig) {
         return;
       }
 
+      if (cmd === '/effort') {
+        if (!cfg.isCustomEndpoint && !modelSupportsEffort(cfg.model)) {
+          console.log(`\n  ${C.gray}Gas 4.5 no tiene niveles de razonamiento. GAS 5.5 los incorpora desde el 19 de octubre a las 12:00.${C.reset}\n`);
+        } else {
+          const chosen = String(parts[1] || '').toLowerCase();
+          if (chosen && !EFFORTS.includes(chosen)) console.log(`\n  ${C.gray}Usa /effort low|medium|high|ultra|max.${C.reset}\n`);
+          else {
+            if (chosen) {
+              if (isGas55Model(cfg.model)) cfg.gasEffort = chosen; else cfg.effort = chosen;
+              saveConfig(cfg);
+            }
+            console.log(`\n  ${C.white}Esfuerzo: ${effortForModel(cfg) || 'predeterminado'}${C.reset} · /effort low|medium|high|ultra|max`);
+            console.log(`  ${C.gray}GAS 5.5 usa low por defecto. Subir el esfuerzo activa razonamiento extendido y puede tardar y consumir más.${C.reset}\n`);
+          }
+        }
+        rl.setPrompt(getPrompt()); rl.prompt(); return;
+      }
+
       if (cmd === '/model' || cmd === '/models' || cmd === '/liquid' || cmd === '/solid' || cmd === '/gas') {
         let targetArg = parts[1]?.trim();
         if (cmd === '/liquid') targetArg = 'liquid';
@@ -1064,7 +1084,7 @@ async function startRepl(initialConfig) {
   });
 
   function closedOnlyNotice() {
-    console.log(`\n  ${C.gold}Esta edición de Deiza Code funciona en exclusiva con ${C.bold}los modelos de Deiza${C.reset}${C.gold} (Solid 5, ${MODEL_INFO['deiza-liquid'].name} y Gas 4.5) y tu cuenta de Deiza.${C.reset}`);
+    console.log(`\n  ${C.gold}Esta edición de Deiza Code funciona en exclusiva con ${C.bold}los modelos de Deiza${C.reset}${C.gold} (Solid 5, ${MODEL_INFO['deiza-liquid'].name} y ${MODEL_INFO['deiza-gas'].name}) y tu cuenta de Deiza.${C.reset}`);
     console.log(`  ${C.gray}La edición open source con soporte de otros motores está en github.com/marcosdeaza/deiza-code${C.reset}\n`);
   }
 
