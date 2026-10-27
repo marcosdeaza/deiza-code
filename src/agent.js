@@ -26,8 +26,10 @@ const { capuLabel, ensureHandoff } = require('./mascot');
 const { COMPUTER_TOOL_DEFINITIONS, COMPUTER_NAMES, COMPUTER_MUTATING, COMPUTER_VISUAL, computerTarget, describeComputerResult } = require('./computer-tools');
 const { ComputerTools, computerModelHasVision } = require('./computer-bridge');
 
-const MAX_TURNS = 120;             // tool rounds per user request (a long feature is many rounds)
-const MAX_CONTINUATIONS = 6;       // automatic "continue" after an output-limit cut, per request
+const MAX_TURNS = 120;             // round checkpoint: extended while the request keeps making progress
+const MAX_SESSION_TURNS = 2400;    // hard ceiling of rounds for one request (same as Deiza for desktop)
+const MAX_SESSION_MS = 8 * 60 * 60 * 1000;
+const MAX_CONTINUATIONS = 6;       // automatic "continue" after output-limit cuts in a row
 const MAX_FAILED_ROUNDS = 4;       // consecutive rounds where every tool call failed -> stop and tell the user
 // Defaults for the largest native window (256K tokens); per-model values come from contextLimit().
 const MAX_CONTEXT_CHARS = 680000;
@@ -967,9 +969,22 @@ async function runAgentTurn({ cfg, messages, userInput, confirmCallback, mode = 
   const MAX_NUDGES = 3;
   let failedRounds = 0;
   let stopReason = 'done';
+  // Long autonomous work: the round budget is a checkpoint, not a wall. While the agent keeps
+  // making real progress (successful tool results) it gets another block of rounds.
+  let budget = MAX_TURNS;
+  let progress = 0;
+  let progressAtCheckpoint = -1;
 
-  while (stats.turns < MAX_TURNS) {
+  while (true) {
     if (signal?.aborted) { stopReason = 'aborted'; break; }
+    if (Date.now() - startedAt >= MAX_SESSION_MS) { stopReason = 'max_turns'; break; }
+    if (stats.turns >= budget) {
+      if (budget >= MAX_SESSION_TURNS || progress <= progressAtCheckpoint) { stopReason = 'max_turns'; break; }
+      progressAtCheckpoint = progress;
+      budget = Math.min(MAX_SESSION_TURNS, budget + MAX_TURNS);
+      const comp = compactContext(messages, { force: true });
+      if (!quiet) console.log(`\n  ${C.gold}● Tarea larga:${C.reset} ${C.gray}sigo trabajando por mi cuenta${comp.compacted ? ' (contexto compactado)' : ''}.${C.reset}`);
+    }
     stats.turns++;
 
     // Auto-compaction if context approaches saturation (> 750k tokens)
@@ -1110,6 +1125,8 @@ async function runAgentTurn({ cfg, messages, userInput, confirmCallback, mode = 
       messages.push({ role: 'assistant', content: assistantText });
     }
     const truncated = result.finishReason === 'length' || toolCalls.some(c => c.cut);
+    // Only cuts in a row mean the engine is stuck; a long job may be cut many times in total.
+    if (!truncated) continuations = 0;
     // Images and computer captures travel as real image parts in a user message after the tool
     // results (never as base64 text in the tool result: that was ~40k tokens of noise per picture).
     const pendingImages = [];
@@ -1272,6 +1289,7 @@ async function runAgentTurn({ cfg, messages, userInput, confirmCallback, mode = 
     }
     if (stopReason === 'aborted') break;
 
+    progress += roundOk;
     if (!roundOk && toolCalls.length) failedRounds++;
     else failedRounds = 0;
     if (failedRounds >= MAX_FAILED_ROUNDS) { stopReason = 'stuck'; break; }
@@ -1293,7 +1311,6 @@ async function runAgentTurn({ cfg, messages, userInput, confirmCallback, mode = 
     break;
   }
 
-  if (stats.turns >= MAX_TURNS) stopReason = 'max_turns';
   if (stopReason === 'aborted') {
     if (toolMode === 'native') {
       const lastCalls = [...messages].reverse().find(m => m.role === 'assistant' && Array.isArray(m.tool_calls));
@@ -1327,7 +1344,7 @@ async function runAgentTurn({ cfg, messages, userInput, confirmCallback, mode = 
     if (stats.commands) parts.push(`${stats.commands} comando${stats.commands === 1 ? '' : 's'}`);
     parts.push(`${(stats.prompt + stats.completion).toLocaleString()} tokens`);
     if (stopReason === 'aborted') console.log(`  ${C.gold}[interrumpido]${C.reset} ${C.darkGray}· ${elapsed} · ${parts.join(' · ')}${C.reset}`);
-    else if (stopReason === 'max_turns') console.log(`  ${C.gold}! Se alcanzó el máximo de ${MAX_TURNS} rondas en esta petición; pide "continúa" para seguir.${C.reset} ${C.darkGray}· ${elapsed} · ${parts.join(' · ')}${C.reset}`);
+    else if (stopReason === 'max_turns') console.log(`  ${C.gold}! Pausa tras ${stats.turns} rondas sin avances nuevos (o el tope de la sesión); pide "continúa" para seguir.${C.reset} ${C.darkGray}· ${elapsed} · ${parts.join(' · ')}${C.reset}`);
     else if (stopReason === 'stuck') console.log(`  ${C.red}✖ El motor no consigue ejecutar sus propias llamadas (${MAX_FAILED_ROUNDS} rondas seguidas fallidas). Reformula la petición o divídela en pasos más pequeños.${C.reset} ${C.darkGray}· ${elapsed} · ${parts.join(' · ')}${C.reset}`);
     else console.log(`  ${C.green}✓ Completado con éxito en ${C.bold}${elapsed}${C.reset} ${C.darkGray}· ${parts.join(' · ')}${C.reset}`);
     console.log(`${C.guide}─────────────────────────────────────────────────────────────${C.reset}\n`);

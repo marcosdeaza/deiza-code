@@ -21,7 +21,7 @@ const { VERSION } = require('../src/config');
 const versionInfo = {
   version: VERSION,
   release_date: new Date().toISOString().split('T')[0],
-  notes: `v${VERSION}: GAS 5.5 ya está disponible (/model gas, esfuerzo con /effort). Los modelos anteriores que sigues pudiendo usar, como Gas 4.5 y Liquid 5.1, tienen su Capu en modo abuelo: bastón, monóculo y cejas blancas.`,
+  notes: `v${VERSION}: las tareas largas ya no se cortan a mitad: Deiza Code sigue trabajando mientras avance (hasta 8 horas) y los cortes del motor solo cuentan si se repiten seguidos.`,
   platforms: {
     darwin: "https://deiza.org/downloads/deiza-code.js",
     linux: "https://deiza.org/downloads/deiza-code.js",
