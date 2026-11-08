@@ -1,0 +1,43 @@
+// 2.5.10: Solid 5.5 by name, Solid 5 pinned, Liquid 6 from 13-nov-2026 00:00 Madrid (Liquid 5.5 pinned, 5.1 retired).
+const assert = require('assert');
+const realNow = Date.now;
+const at = (iso) => { Date.now = () => Date.parse(iso); };
+const fresh = () => { for (const k of Object.keys(require.cache)) if (k.includes('/src/')) delete require.cache[k]; return require('../src/config'); };
+
+at('2026-11-12T23:59:59+01:00');
+let c = fresh();
+assert.strictEqual(c.MODEL_INFO['deiza-solid'].name, 'Deiza Solid 5.5');
+assert.strictEqual(c.MODEL_INFO['deiza-liquid'].name, 'Deiza Liquid 5.5');
+assert.strictEqual(c.contextLimit('deiza-liquid'), 1048576);
+assert.strictEqual(c.normalizeModel('solid'), 'deiza-solid');
+assert.strictEqual(c.normalizeModel('solid-5'), 'deiza-solid-5');
+assert.strictEqual(c.normalizeModel('solid-5.5'), 'deiza-solid-5.5');
+assert.strictEqual(c.normalizeModel('liquid-5.1'), 'deiza-liquid-5.1');
+assert.throws(() => c.normalizeModel('liquid-6'), /13 de noviembre/);
+assert.throws(() => c.normalizeModel('deiza-liquid-6'), /13 de noviembre/);
+const ui = require('../src/ui');
+let sel = ui.renderModelSelector('deiza-solid');
+assert.ok(sel.includes('Liquid 6 · Próximamente'), 'announces Liquid 6');
+assert.ok(sel.includes('Deiza Solid 5.5') && sel.includes('/model solid-5'), 'Solid 5.5 + pinned Solid 5');
+assert.ok(ui.modelBadge('deiza-solid').includes('SOLID 5.5'));
+assert.strictEqual(require('../src/mascot').capuForm('deiza-solid-5'), 'solid:old');
+assert.strictEqual(require('../src/mascot').capuForm('deiza-solid'), 'solid');
+assert.strictEqual(require('../src/mascot').capuForm('deiza-liquid-5.5'), 'liquid');
+
+at('2026-11-13T00:00:01+01:00');
+c = fresh();
+assert.strictEqual(c.MODEL_INFO['deiza-liquid'].name, 'Deiza Liquid 6');
+assert.strictEqual(c.MODEL_INFO['deiza-liquid'].tag, 'LIQUID 6');
+assert.strictEqual(c.contextLimit('deiza-liquid'), 256000);
+assert.strictEqual(c.contextLimit('deiza-liquid-5.5'), 262144);
+assert.strictEqual(c.normalizeModel('liquid-6'), 'deiza-liquid-6');
+assert.strictEqual(c.normalizeModel('deiza-liquid-6'), 'deiza-liquid-6');
+assert.strictEqual(c.normalizeModel('liquid-5.1'), 'deiza-liquid-5.5');
+assert.strictEqual(c.normalizeModel('deiza-liquid-5.1'), 'deiza-liquid-5.5');
+assert.strictEqual(c.normalizeModel('liquid'), 'deiza-liquid');
+assert.ok(/anterior/.test(c.MODEL_INFO['deiza-liquid-5.5'].desc));
+sel = require('../src/ui').renderModelSelector('deiza-liquid');
+assert.ok(sel.includes('Deiza Liquid 6') && sel.includes('/model liquid-5.5') && !sel.includes('liquid-5.1'));
+assert.strictEqual(require('../src/mascot').capuForm('deiza-liquid-5.5'), 'liquid:old');
+Date.now = realNow;
+console.log('models_l6: OK');

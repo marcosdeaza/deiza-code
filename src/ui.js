@@ -61,7 +61,10 @@ const MODEL_BADGES = {
   get 'deiza-liquid'() { return `\x1b[1;38;5;81m[${MODEL_INFO['deiza-liquid'].tag}]\x1b[0m`; },
   'deiza-liquid-5.1': '\x1b[1;38;5;81m[LIQUID 5.1]\x1b[0m',
   'deiza-liquid-5.5': '\x1b[1;38;5;81m[LIQUID 5.5]\x1b[0m',
-  'deiza-solid': '\x1b[1m\x1b[38;2;184;74;85m[SOLID 5]\x1b[0m',
+  'deiza-liquid-6': '\x1b[1;38;5;81m[LIQUID 6]\x1b[0m',
+  get 'deiza-solid'() { return `\x1b[1m\x1b[38;2;184;74;85m[${MODEL_INFO['deiza-solid'].tag}]\x1b[0m`; },
+  'deiza-solid-5.5': '\x1b[1m\x1b[38;2;184;74;85m[SOLID 5.5]\x1b[0m',
+  'deiza-solid-5': '\x1b[1m\x1b[38;2;184;74;85m[SOLID 5]\x1b[0m',
   get 'deiza-gas'() { return `\x1b[1;38;5;114m[${MODEL_INFO['deiza-gas'].tag}]\x1b[0m`; },
 };
 
@@ -77,7 +80,13 @@ function renderModelSelector(currentModel = 'deiza-liquid') {
     { num: '2', key: 'deiza-solid',    short: 'solid',    info: MODEL_INFO['deiza-solid'],    color: C.granateBright },
     { num: '3', key: 'deiza-gas',      short: 'gas',      info: MODEL_INFO['deiza-gas'],      color: C.green },
   ];
-  if (MODEL_INFO['deiza-liquid'].tag === 'LIQUID 5.5' || currentModel === 'deiza-liquid-5.1') list.push({num: '5.1', key: 'deiza-liquid-5.1', short: 'liquid-5.1', info: MODEL_INFO['deiza-liquid-5.1'], color: C.cyan});
+  // previous generations, pinned: Liquid 5.5 once Liquid 6 is out (5.1 is retired then), Solid 5
+  if (MODEL_INFO['deiza-liquid'].tag === 'LIQUID 6') list.push({num: '5.5', key: 'deiza-liquid-5.5', short: 'liquid-5.5', info: MODEL_INFO['deiza-liquid-5.5'], color: C.cyan});
+  else {
+    if (MODEL_INFO['deiza-liquid'].tag === 'LIQUID 5.5' || currentModel === 'deiza-liquid-5.1') list.push({num: '5.1', key: 'deiza-liquid-5.1', short: 'liquid-5.1', info: MODEL_INFO['deiza-liquid-5.1'], color: C.cyan});
+    out += `  ${C.gray}Liquid 6 · Próximamente: viernes 13 de noviembre, 00:00 (hora peninsular)${C.reset}\n`;
+  }
+  if (MODEL_INFO['deiza-solid'].tag === 'SOLID 5.5') list.push({num: '5', key: 'deiza-solid-5', short: 'solid-5', info: MODEL_INFO['deiza-solid-5'], color: C.granateBright});
   if (MODEL_INFO['deiza-gas'].tag === 'GAS 5.5') list.push({num:'4.5',key:'deiza-gas-4.5',short:'gas-4.5',info:MODEL_INFO['deiza-gas-4.5'],color:C.gray});
   else out += `  ${C.gray}GAS 5.5 · Próximamente: 18 de octubre, 17:00 (hora peninsular)${C.reset}\n`;
   for (const item of list) {
@@ -408,9 +417,9 @@ const COMMANDS_REGISTRY = [
   { cmd: '/update', args: '', desc: 'Comprobar y actualizar Deiza Code a la última versión', cat: 'Sistema' },
   { cmd: '/upgrade', args: '', desc: 'Alias de /update (comprobar y actualizar a la última versión)', cat: 'Sistema' },
   { cmd: '/effort', args: '[low|medium|high|ultra|max]', desc: 'Controlar el razonamiento; más esfuerzo puede tardar y consumir más', cat: 'Configuración' },
-  { cmd: '/model', args: '[1-3|nombre]', get desc() { return `Cambiar de modelo (${MODEL_INFO['deiza-liquid'].name}, Solid 5, ${MODEL_INFO['deiza-gas'].name})`; }, cat: 'Configuración' },
+  { cmd: '/model', args: '[1-3|nombre]', get desc() { return `Cambiar de modelo (${MODEL_INFO['deiza-liquid'].name}, ${MODEL_INFO['deiza-solid'].name}, ${MODEL_INFO['deiza-gas'].name})`; }, cat: 'Configuración' },
   { cmd: '/liquid', args: '', get desc() { return `Activar ${MODEL_INFO['deiza-liquid'].name} (${MODEL_INFO['deiza-liquid'].badge})`; }, cat: 'Modelos' },
-  { cmd: '/solid', args: '', desc: 'Activar modelo Deiza Solid 5 (El más capaz · metódico, código e investigación)', cat: 'Modelos' },
+  { cmd: '/solid', args: '', get desc() { return `Activar modelo ${MODEL_INFO['deiza-solid'].name} (El más capaz · metódico, código e investigación)`; }, cat: 'Modelos' },
   { cmd: '/gas', args: '', desc: 'Activar modelo Deiza Gas (El más rápido y ligero)', cat: 'Modelos' },
   { cmd: '/endpoint', args: '[url|deiza]', desc: 'Usar otro motor OpenAI-compatible (Ollama, vLLM...) o volver a Deiza', cat: 'Configuración' },
   { cmd: '/config', args: '', desc: 'Ver o modificar la configuración local', cat: 'Configuración' },
@@ -476,7 +485,7 @@ function renderWhoami({ email, name, plan, apiKey, apiBase, isCustom, usage, cur
   }
   // 2.5.1: the real model (Solid 5 is the default since 2.4) instead of the old "Deiza Omniscient" label
   const m = String(model || '').toLowerCase();
-  const modelName = m.includes('solid') ? 'Deiza Solid 5' : m.includes('gas') ? (m === 'deiza-gas-4.5' ? 'Deiza Gas 4.5' : MODEL_INFO['deiza-gas'].name) : (m.includes('liquid') || m.includes('omniscient')) ? (MODEL_INFO[m] || MODEL_INFO['deiza-liquid']).name : (model || 'Deiza Solid 5');
+  const modelName = m.includes('solid') ? (MODEL_INFO[m] || MODEL_INFO['deiza-solid']).name : m.includes('gas') ? (m === 'deiza-gas-4.5' ? 'Deiza Gas 4.5' : MODEL_INFO['deiza-gas'].name) : (m.includes('liquid') || m.includes('omniscient')) ? (MODEL_INFO[m] || MODEL_INFO['deiza-liquid']).name : (model || MODEL_INFO['deiza-solid'].name);
   content += `${C.white}Modelo:${C.reset}             ${isCustom ? `${C.granateBright}${model || '-'}${C.reset}` : `${C.granateBright}${modelName}${C.reset} ${C.gray}[cámbialo con /model · infraestructura dedicada de Deiza]${C.reset}`}\n`;
 
   return box('Perfil de Usuario — Deiza Code', content, C.granate);

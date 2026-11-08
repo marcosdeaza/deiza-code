@@ -21,7 +21,7 @@ const { VERSION } = require('../src/config');
 const versionInfo = {
   version: VERSION,
   release_date: new Date().toISOString().split('T')[0],
-  notes: `v${VERSION}: las tareas largas ya no se cortan a mitad: Deiza Code sigue trabajando mientras avance (hasta 8 horas) y los cortes del motor solo cuentan si se repiten seguidos.`,
+  notes: `v${VERSION}: Solid 5.5 aparece con su nombre (Solid 5 queda como versión fija anterior) y Liquid 6 llega el viernes 13 de noviembre a las 00:00; Liquid 5.5 queda como versión fija.`,
   platforms: {
     darwin: "https://deiza.org/downloads/deiza-code.js",
     linux: "https://deiza.org/downloads/deiza-code.js",

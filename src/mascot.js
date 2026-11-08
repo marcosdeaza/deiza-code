@@ -154,13 +154,14 @@ for (const base of ['liquid', 'gas', 'solid']) {
 }
 
 // Pinned ids of retired generations that can still be used.
-const CAPU_LEGACY = /gas-4\.5|liquid-5\.1|liquid-4\.5/;
+const CAPU_LEGACY = /gas-4\.5|liquid-5\.1|liquid-4\.5|solid-5$/;
+const liquid6Out = () => Date.now() >= Date.parse('2026-11-13T00:00:00+01:00');
 /** The Capu of a model: Gas and Solid have their own; Liquid and any other engine get the usual one.
  *  A retired generation that is still available gets the same Capu in old mode. */
 function capuForm(model) {
   const m = String(model || '').toLowerCase();
   const base = /gas/.test(m) ? 'gas' : /solid/.test(m) ? 'solid' : 'liquid';
-  return CAPU_LEGACY.test(m) ? `${base}:old` : base;
+  return CAPU_LEGACY.test(m) || (/liquid-5\.5$/.test(m) && liquid6Out()) ? `${base}:old` : base;
 }
 
 const capuColorOk = () => process.stdout.isTTY && !process.env.NO_COLOR && process.env.TERM !== 'dumb';

@@ -860,7 +860,8 @@ async function startRepl(initialConfig) {
             targetArg = chosen;
           }
 
-          const resolved = normalizeModel(targetArg);
+          let resolved;
+          try { resolved = normalizeModel(targetArg); } catch (e) { console.log(`\n  ${C.gold}${e.message}${C.reset}\n`); rl.prompt(); return; }
           if (resolved && MODEL_INFO[resolved]) {
             cfg.model = resolved;
             saveConfig(cfg);
@@ -1087,7 +1088,7 @@ async function startRepl(initialConfig) {
   });
 
   function closedOnlyNotice() {
-    console.log(`\n  ${C.gold}Esta edición de Deiza Code funciona en exclusiva con ${C.bold}los modelos de Deiza${C.reset}${C.gold} (Solid 5, ${MODEL_INFO['deiza-liquid'].name} y ${MODEL_INFO['deiza-gas'].name}) y tu cuenta de Deiza.${C.reset}`);
+    console.log(`\n  ${C.gold}Esta edición de Deiza Code funciona en exclusiva con ${C.bold}los modelos de Deiza${C.reset}${C.gold} (${MODEL_INFO['deiza-solid'].name}, ${MODEL_INFO['deiza-liquid'].name} y ${MODEL_INFO['deiza-gas'].name}) y tu cuenta de Deiza.${C.reset}`);
     console.log(`  ${C.gray}La edición open source con soporte de otros motores está en github.com/marcosdeaza/deiza-code${C.reset}\n`);
   }
 

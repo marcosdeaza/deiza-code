@@ -154,8 +154,8 @@ async function fetchUsage(apiKey, accountBase = DEFAULT_DEIZA_API) {
 
 async function fetchModels(apiKey, accountBase = DEFAULT_DEIZA_API) {
   const fallback = [
-    { id: 'deiza-liquid', name: 'Deiza Liquid 5.5', description: 'Motor principal autónomo. Ventana de 256K tokens.' },
-    { id: 'deiza-solid', name: 'Deiza Solid 5', description: 'El más capaz: metódico, código e investigación.' },
+    { id: 'deiza-liquid', name: 'Deiza Liquid', description: 'Equilibrado y agéntico.' },
+    { id: 'deiza-solid', name: 'Deiza Solid 5.5', description: 'El más capaz: metódico, código e investigación.' },
     { id: 'deiza-gas', name: require('./config').MODEL_INFO['deiza-gas'].name, description: 'El más rápido y ligero.' },
   ];
   const res = await jsonRequest('GET', `${accountBase}/api/code/models`, { apiKey, timeout: 5000 });

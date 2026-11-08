@@ -40,7 +40,7 @@ Subcomandos:
   deiza compact
 
 Deiza Code funciona con tu cuenta de Deiza (planes Free, Friend o Signet).${IS_CLOSED ? `
-Modelos: Liquid 5.1 (Equilibrado · 256K tokens), Solid 5 (el más capaz) y Gas 4.5 (el más rápido).` : ''}
+Modelos: Liquid (equilibrado: Liquid 6 desde el 13 de noviembre), Solid 5.5 (el más capaz) y GAS 5.5 (el más rápido).` : ''}
 Ejemplos:
   deiza
   deiza --solid
