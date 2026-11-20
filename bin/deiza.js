@@ -39,7 +39,7 @@ Subcomandos:
   deiza tokens
   deiza compact
 
-Deiza Code funciona con tu cuenta de Deiza (planes Free, Friend o Signet).${IS_CLOSED ? `
+Deiza Code funciona con tu cuenta de Deiza: todos los planes de pago (desde 4,95 €/mes) y la prueba gratis de 7 días.${IS_CLOSED ? `
 Modelos: Liquid (equilibrado: Liquid 6 desde el 13 de noviembre), Solid 5.5 (el más capaz) y GAS 5.5 (el más rápido).` : ''}
 Ejemplos:
   deiza

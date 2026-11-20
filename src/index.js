@@ -230,9 +230,11 @@ async function startRepl(initialConfig) {
   try {
     const remote = await checkLatestVersion();
     if (remote && remote.version && isNewerVersion(remote.version, VERSION)) {
-      console.log(`  ${C.gold}● Actualización disponible: ${C.bold}v${remote.version}${C.reset} ${C.gray}(instalada: v${VERSION})${C.reset}`);
+      // mandatory update v1: below min_version the update runs without asking
+      const mandatory = !!(remote.min_version && isNewerVersion(remote.min_version, VERSION));
+      console.log(`  ${C.gold}● ${mandatory ? 'Actualización necesaria' : 'Actualización disponible'}: ${C.bold}v${remote.version}${C.reset} ${C.gray}(instalada: v${VERSION})${C.reset}`);
       if (remote.notes) console.log(`  ${C.gray}Novedades: ${remote.notes}${C.reset}`);
-      const shouldUpdate = await new Promise((resolve) => {
+      const shouldUpdate = mandatory ? true : await new Promise((resolve) => {
         rl.question(`  ${C.roseBold}¿Deseas actualizar ahora a la v${remote.version} automáticamente? [S/n]: ${C.reset}`, (ans) => {
           const a = String(ans || '').trim().toLowerCase();
           resolve(a === '' || a === 's' || a === 'si' || a === 'sí' || a === 'y' || a === 'yes');
@@ -357,7 +359,7 @@ async function startRepl(initialConfig) {
         console.log(Status.error('Tu sesión ha expirado o la clave fue revocada.'));
         await doLogin(true);
       } else if (msg === 'PLAN_REQUIRED') {
-        console.log(Status.error('Deiza Code requiere un plan de pago activo (Friend o Signet): https://deiza.org/plans'));
+        console.log(Status.error('Deiza Code está en todos los planes de pago (desde 4,95 €/mes) y en la prueba gratis de 7 días: https://deiza.org/plans'));
       } else if (msg === 'USAGE_LIMIT_EXCEEDED') {
         console.log(Status.error(err.detail || 'Has alcanzado el límite de uso de tu cuota. Consulta /usage para ver cuándo se renueva.'));
         if (err.handoff && err.handoff.path) console.log(`  ${C.gold}Traspaso guardado en ${path.relative(process.cwd(), err.handoff.path) || err.handoff.path}${C.reset}: pégalo en la siguiente sesión para seguir.\n`);

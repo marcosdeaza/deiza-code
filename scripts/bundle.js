@@ -23,6 +23,8 @@ function cleanCode(code) {
     .replace(/const\s+\{[^}]+\}\s*=\s*require\(['"]child_process['"]\);?/g, '')
     .replace(/const\s+\{[^}]+\}\s*=\s*require\(['"]\.\.?\/[^'"]+['"]\);?/g, '')
     .replace(/const\s+[^=]+\s*=\s*require\(['"]\.\.?\/[^'"]+['"]\);?/g, '')
+    // inline uses (require('./config').X): every module shares one scope in the bundle, so X is already there
+    .replace(/require\(['"]\.\.?\/[\w-]+['"]\)\./g, '')
     .replace(/module\.exports\s*=\s*\{[\s\S]*?\};?/g, '');
 }
 
@@ -103,6 +105,11 @@ const fullBundle = [
 
 const bundlePath = path.resolve(ROOT, OUT);
 fs.mkdirSync(path.dirname(bundlePath), { recursive: true });
+const stray = fullBundle.match(/require\(['"]\.\.?\/[^'"]+['"]\)/g);
+if (stray) {
+  console.error(`bundle: unresolved local require(s) left in the bundle: ${[...new Set(stray)].join(', ')}`);
+  process.exit(1);
+}
 fs.writeFileSync(bundlePath, fullBundle, 'utf-8');
 fs.chmodSync(bundlePath, 0o755);
 

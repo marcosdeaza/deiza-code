@@ -21,7 +21,9 @@ const { VERSION } = require('../src/config');
 const versionInfo = {
   version: VERSION,
   release_date: new Date().toISOString().split('T')[0],
-  notes: `v${VERSION}: Solid 5.5 aparece con su nombre (Solid 5 queda como versión fija anterior) y Liquid 6 llega el viernes 13 de noviembre a las 00:00; Liquid 5.5 queda como versión fija.`,
+  // Clients older than min_version update on start without asking (from 2.5.11 on).
+  min_version: '2.5.11',
+  notes: `v${VERSION}: corrige «Cannot find module './config'» al usar el navegador y los subagentes, y la actualización pasa a ser automática cuando es obligatoria. Planes nuevos: Code en todos los planes de pago y en la prueba gratis de 7 días.`,
   platforms: {
     darwin: "https://deiza.org/downloads/deiza-code.js",
     linux: "https://deiza.org/downloads/deiza-code.js",
